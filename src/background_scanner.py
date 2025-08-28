@@ -7,103 +7,151 @@ from typing import Dict, Any, List
 from src.utils.config_loader import config
 from src.bot_interface.formatters import format_trade_alert
 from src.analysis_manager import AnalysisManager
+from src.trading import state_manager, trade_manager # Updated import
+from src.data.bybit_client import BybitClient
 
 SCAN_INTERVAL_SECONDS = config.get('scanner', {}).get('interval_seconds', 900)
 
-def analyze_symbol_sync(symbol: str, last_alerted: Dict[str, Any]) -> list:
+def find_new_setups_sync(symbol: str) -> List[Dict[str, Any]]:
     """
     Uses the AnalysisManager to perform a full hierarchical analysis for a single symbol.
-    Returns a list of alerts to be sent.
     """
-    alerts_to_send = []
     manager = AnalysisManager(symbol)
     manager.run_hierarchical_analysis()
 
-    decision = manager.context.get("final_decision")
-    trade_setup = manager.context.get("final_trade_setup")
+    if manager.context.get("final_decision") in ["ACCEPT", "DEFER"]:
+        return [manager.context]
+    return []
 
-    # Define a unique key for the potential trade to avoid spamming alerts
-    # Using the pattern type and the start/end prices is a good way to identify a setup
-    if trade_setup:
-        reason = trade_setup.get('reason', '')
-        alert_key = f"{symbol}-{trade_setup.get('pattern_type')}-{reason}"
-    else:
-        # If no trade setup, no alert can be generated
-        return []
+async def handle_trade_update(app: Application, user_id: int, event: Dict[str, Any], trade: Dict[str, Any]):
+    """
+    Handles events from the trade manager, sends alerts, updates state, and edits the original message.
+    """
+    event_type = event.get('event')
+    symbol = event.get('symbol')
+    trade_id = trade.get('id')
+    message_id = trade.get('telegram_message_id')
+    alert_text = ""
 
-    # Case 1: A trade is fully confirmed and ready to be sent
-    if decision == "ACCEPT":
-        if last_alerted.get(alert_key) != "ACCEPTED":
-            scenarios = manager.context.get("15m_scenarios", [])
-            alert_text = format_trade_alert(trade_setup, "15m", symbol, scenarios)
-            # Higher priority for accepted trades
-            alerts_to_send.append((alert_text, 'trade', 1))
-            last_alerted[alert_key] = "ACCEPTED"
+    if event_type == 'TP1_HIT':
+        alert_text = (f"✅ **الهدف الأول تحقق | {symbol}** ✅\n"
+                      f"**الإجراء الموصى به:** نقل وقف الخسارة إلى نقطة الدخول لتأمين الصفقة.")
 
-    # Case 2: A valid setup was found, but it's not ready yet (e.g., price not in zone)
-    elif decision == "DEFER":
-        if last_alerted.get(alert_key) is None:
-            # This is a high-quality "potential opportunity"
-            info_text = (f"⏳ **فرصة محتملة للمراقبة | {symbol}**\n"
-                         f"**النمط:** `{trade_setup.get('pattern_type')}`\n"
-                         f"**السبب:** {trade_setup.get('reason')}\n"
-                         f"**الحالة:** {manager.context['decision_path'][-1]}") # Get the last reason for deferral
+        trade['stop_loss'] = event.get('new_stop_loss')
+        trade['status'] = 'RISK_FREE'
+        if 'hit_targets_indices' not in trade: trade['hit_targets_indices'] = []
+        trade['hit_targets_indices'].append(event.get('target_index'))
+        state_manager.update_trade(trade)
 
-            # Lower priority for deferred trades
-            alerts_to_send.append((info_text, 'info', 10))
-            last_alerted[alert_key] = "DEFERRED"
+    elif event_type == 'TP_HIT':
+        alert_text = f"✅ **هدف جديد تحقق | {symbol}** ✅"
 
-    return alerts_to_send
+        if 'hit_targets_indices' not in trade: trade['hit_targets_indices'] = []
+        trade['hit_targets_indices'].append(event.get('target_index'))
+        state_manager.update_trade(trade)
 
+    elif event_type == 'SL_HIT':
+        alert_text = f"❌ **تم ضرب وقف الخسارة | {symbol}** ❌"
+        trade['status'] = 'CLOSED_SL'
+        state_manager.update_trade(trade)
+
+    # Send a new, brief notification about the update
+    if alert_text:
+        await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
+
+    # Now, edit the original message to reflect the new state
+    if message_id and trade.get('status') != 'CLOSED_SL':
+        try:
+            # We need the original scenarios to re-format the alert.
+            # This is a limitation; for now, we pass an empty list.
+            # A future improvement would be to save scenarios with the trade state.
+            updated_alert_text = format_trade_alert(trade, "15m", symbol, [])
+            await app.bot.edit_message_text(chat_id=user_id, message_id=message_id, text=updated_alert_text, parse_mode='Markdown')
+        except Exception as e:
+            print(f"Could not edit message {message_id} for trade {trade_id}: {e}")
+
+async def monitor_active_trades(app: Application, user_id: int):
+    """
+    Loads active trades, checks their status using the trade_manager, and handles updates.
+    """
+    active_trades = state_manager.load_active_trades()
+    if not active_trades: return
+
+    print(f"--- Monitoring {len(active_trades)} active trade(s) ---")
+    client = BybitClient()
+
+    for trade in active_trades:
+        symbol = trade.get('symbol')
+        if not symbol or trade.get('status') == 'CLOSED_SL': continue
+
+        price_str = client.get_market_price(symbol)
+        if not price_str: continue
+
+        try:
+            current_price = float(price_str)
+        except (ValueError, TypeError):
+            continue
+
+        # Use the new trade_manager to check for events
+        update_event = trade_manager.manage_active_trade(trade, current_price)
+        if update_event:
+            await handle_trade_update(app, user_id, update_event, trade)
 
 async def run_scanner(app: Application):
     """
-    The main background task that runs the analysis for all symbols,
-    collects all alerts, sorts them, and sends a single consolidated message.
+    The main background task that finds new trades and monitors active ones.
     """
     print("Background scanner started.")
-    last_alerted_setups: Dict[str, str] = {}
     symbols_to_scan = config['symbols_to_scan']
     print(f"Scanner will analyze the following symbols: {symbols_to_scan}")
 
     while True:
         try:
-            print(f"[{datetime.datetime.now()}] Running new automatic scan cycle...")
+            print(f"\n[{datetime.datetime.now()}] --- Running new scan cycle ---")
             user_id = app.bot_data.get('user_id')
             if not user_id:
-                print("User ID not found in bot_data, skipping scan cycle.")
+                print("User ID not found, skipping scan cycle.")
                 await asyncio.sleep(10)
                 continue
 
-            all_alerts_for_cycle = []
+            # --- Part 1: Find New Trade Setups ---
+            all_found_setups = []
             for symbol in symbols_to_scan:
-                alerts = await asyncio.to_thread(
-                    analyze_symbol_sync, symbol, last_alerted_setups
-                )
-                if alerts:
-                    all_alerts_for_cycle.extend(alerts)
+                setups = await asyncio.to_thread(find_new_setups_sync, symbol)
+                if setups:
+                    all_found_setups.extend(setups)
 
-            if all_alerts_for_cycle:
-                all_alerts_for_cycle.sort(key=lambda x: x[2])
+            if all_found_setups:
+                info_alerts_text = []
+                for context in all_found_setups:
+                    if context.get("final_decision") == "ACCEPT":
+                        trade_setup = context.get("final_trade_setup")
+                        symbol = context.get("symbol")
+                        scenarios = context.get("15m_scenarios", [])
+                        alert_text = format_trade_alert(trade_setup, "15m", symbol, scenarios)
+                        sent_message = await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
 
-                trade_alerts = [a[0] for a in all_alerts_for_cycle if a[1] == 'trade']
-                info_alerts = [a[0] for a in all_alerts_for_cycle if a[1] == 'info']
+                        trade_setup['telegram_message_id'] = sent_message.message_id
+                        trade_setup['status'] = 'ACTIVE'
+                        state_manager.add_trade(trade_setup)
+                        print(f"SUCCESS: Saved new active trade for {symbol} with ID {trade_setup['id']}")
+                    elif context.get("final_decision") == "DEFER":
+                        trade_setup = context.get("final_trade_setup")
+                        info_text = (f"⏳ **فرصة قيد المراقبة | {context.get('symbol')}**\n"
+                                     f"**النمط:** `{trade_setup.get('pattern_type')}`\n"
+                                     f"**الحالة:** {context['decision_path'][-1]}")
+                        info_alerts_text.append(info_text)
 
-                final_message = ""
-                if trade_alerts:
-                    final_message += "💎 **صفقات جاهزة (تحليل هرمي)** 💎\n\n"
-                    final_message += "\n\n---\n\n".join(trade_alerts)
-
-                if info_alerts:
-                    if final_message: final_message += "\n\n"
-                    final_message += "⏳ **فرص قيد المراقبة** ⏳\n\n"
-                    final_message += "\n\n---\n\n".join(info_alerts)
-
-                if final_message:
-                    await app.bot.send_message(chat_id=user_id, text=final_message, parse_mode='Markdown')
+                if info_alerts_text:
+                    final_info_message = "⏳ **فرص قيد المراقبة** ⏳\n\n" + "\n\n---\n\n".join(info_alerts_text)
+                    await app.bot.send_message(chat_id=user_id, text=final_info_message, parse_mode='Markdown')
             else:
                 print("Scan cycle complete. No new setups found.")
 
+            # --- Part 2: Monitor Existing Active Trades ---
+            await monitor_active_trades(app, user_id)
+
+            print(f"--- Scan cycle complete. Waiting {SCAN_INTERVAL_SECONDS} seconds. ---")
             await asyncio.sleep(SCAN_INTERVAL_SECONDS)
 
         except asyncio.CancelledError:
