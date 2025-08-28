@@ -64,7 +64,8 @@ def analyze_symbol_sync(symbol: str, client: BybitClient, last_alerted_pattern_t
 
                 trade_setup = define_trade_setup(scenarios, data_with_indicators)
 
-                if trade_setup:
+                # This is the key fix: only proceed if the setup is a valid LONG trade, not just 'Analysis'
+                if trade_setup and trade_setup.get('type') == 'LONG':
                     current_price_ltf = data_with_indicators['close'].iloc[-1]
                     entry_zone = trade_setup['entry_zone']
                     is_in_zone = entry_zone[1] <= current_price_ltf <= entry_zone[0]
@@ -84,7 +85,7 @@ def analyze_symbol_sync(symbol: str, client: BybitClient, last_alerted_pattern_t
                         if stoch_bullish and macd_bullish and volume_confirmed:
                             print(f"  - {symbol}/{timeframe}: CONFIRMED! Stoch, MACD, and Volume are bullish.")
                             alert_text = format_trade_alert(trade_setup, timeframe, symbol, scenarios)
-                            priority = abs(current_price_ltf - trade_setup['entry']) / current_price_ltf  # Normalized proximity
+                            priority = abs(current_price_ltf - trade_setup['entry']) / current_price_ltf
                             alerts_to_send.append((alert_text, 'trade', priority))
                         else:
                             print(f"  - {symbol}/{timeframe}: In zone, but waiting for indicator confirmation.")
