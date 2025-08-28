@@ -3,9 +3,18 @@ from scipy.signal import find_peaks
 from typing import List, Dict, Any
 
 def find_pivots(df: pd.DataFrame, prominence: float = 1.0) -> List[Dict[str, Any]]:
-    # Defensive check to ensure the index is of the correct type.
+    # Robustness Patch: If the index is not a DatetimeIndex, attempt to fix it.
+    # This is a workaround for an upstream bug where the index is being reset.
     if not isinstance(df.index, pd.DatetimeIndex):
-        raise TypeError(f"DataFrame index in find_pivots must be a DatetimeIndex, but it is {type(df.index)}")
+        if 'timestamp' in df.columns:
+            # If the timestamp column exists, use it to rebuild the index.
+            df = df.set_index('timestamp')
+            if not isinstance(df.index, pd.DatetimeIndex):
+                 # If the column is not already datetime, convert it.
+                 df.index = pd.to_datetime(df.index)
+        else:
+            # If we can't fix it, raise an error with more context.
+            raise TypeError(f"DataFrame index is not a DatetimeIndex and 'timestamp' column not found.")
 
     if 'high' not in df.columns or 'low' not in df.columns:
         raise ValueError("Input DataFrame must contain 'high' and 'low' columns.")
