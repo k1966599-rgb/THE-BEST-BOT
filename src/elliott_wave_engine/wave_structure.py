@@ -39,13 +39,15 @@ class WavePattern:
         if not all(r.passed for r in self.rules_results):
             self.confidence_score = 0.0
             return
-        score = 50.0
+        # Base score for passing all rules is now higher
+        score = 60.0
         total_possible_guideline_score = sum(guideline_weights.values())
         if total_possible_guideline_score > 0:
             for g in self.guidelines_results:
                 if g.passed:
                     weight = guideline_weights.get(g.name, 0)
-                    score += (weight / total_possible_guideline_score) * 50.0
+                    # Guidelines now contribute to the remaining 40 points
+                    score += (weight / total_possible_guideline_score) * 40.0
         self.confidence_score = min(score, 100.0)
 
 @dataclass

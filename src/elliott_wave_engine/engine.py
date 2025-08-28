@@ -48,17 +48,18 @@ class ElliottWaveEngine:
 
         # Dynamic prominence based on timeframe to improve detection
         # Higher prominence for larger timeframes, lower for smaller ones.
+        # Increased sensitivity for lower timeframes to find more patterns
         prominence_map = {
-            '4h':  avg_price * 0.005,   # 0.5% for 4-hour
+            '4h':  avg_price * 0.005,   # 0.5%
             '240': avg_price * 0.005,
-            '1h':  avg_price * 0.002,   # 0.2% for 1-hour
+            '1h':  avg_price * 0.002,   # 0.2%
             '60':  avg_price * 0.002,
-            '15m': avg_price * 0.001,   # 0.1% for 15-minute
-            '15':  avg_price * 0.001,
-            '5m':  avg_price * 0.0007,  # 0.07% for 5-minute
-            '5':   avg_price * 0.0007,
-            '3m':  avg_price * 0.0005,  # 0.05% for 3-minute
-            '3':   avg_price * 0.0005,
+            '15m': avg_price * 0.0008,  # 0.08% (more sensitive)
+            '15':  avg_price * 0.0008,
+            '5m':  avg_price * 0.0005,  # 0.05% (more sensitive)
+            '5':   avg_price * 0.0005,
+            '3m':  avg_price * 0.0003,  # 0.03% (very sensitive)
+            '3':   avg_price * 0.0003,
         }
         # Use the timeframe of the engine instance, with a default fallback
         prominence = prominence_map.get(str(self.timeframe), avg_price * 0.002)
