@@ -62,23 +62,28 @@ class ElliottWaveEngine:
             else:
                 raise TypeError(f"Cannot find 'timestamp' column to fix index for {self.symbol}/{self.timeframe}.")
 
-        # 2. --- Calculate Prominence using ATR ---
+        # 2. --- Calculate Prominence using ATR (Median for Robustness) ---
         if 'ATRr_14' not in self.data.columns or self.data['ATRr_14'].isnull().all():
             avg_price = self.data['close'].mean()
             prominence = avg_price * 0.01
             logging.warning(f"ATR data not found for {self.symbol}/{self.timeframe}. Falling back to price-percent prominence.")
         else:
-            mean_atr = self.data['ATRr_14'].mean()
-            if not mean_atr or mean_atr <= 0 or pd.isna(mean_atr):
+            # Using median instead of mean to make pivot detection more robust against outlier candles (e.g., news spikes)
+            median_atr = self.data['ATRr_14'].median()
+            if not median_atr or median_atr <= 0 or pd.isna(median_atr):
                 avg_price = self.data['close'].mean()
                 prominence = avg_price * 0.01
-                logging.warning(f"Invalid ATR ({mean_atr}) for {self.symbol}/{self.timeframe}. Falling back to price-percent prominence.")
+                logging.warning(f"Invalid ATR ({median_atr}) for {self.symbol}/{self.timeframe}. Falling back to price-percent prominence.")
             else:
+                # Multipliers adjusted slightly to account for median being generally lower than mean
                 prominence_map = {
-                    '4h':  mean_atr * 8.0, '1h':  mean_atr * 5.0, '15m': mean_atr * 2.5,
-                    '5m':  mean_atr * 2.0, '3m':  mean_atr * 1.5,
+                    '4h':  median_atr * 10.0,
+                    '1h':  median_atr * 7.0,
+                    '15m': median_atr * 4.0,
+                    '5m':  median_atr * 3.0,
+                    '3m':  median_atr * 2.5,
                 }
-                prominence = prominence_map.get(str(self.timeframe), mean_atr * 3.0)
+                prominence = prominence_map.get(str(self.timeframe), median_atr * 3.0)
 
         # 3. --- Find and Clean Pivots ---
         if 'high' not in self.data.columns or 'low' not in self.data.columns:
