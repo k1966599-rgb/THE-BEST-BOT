@@ -36,7 +36,7 @@ def _format_single_pattern(pattern: WavePattern) -> List[str]:
         lines.append(f"  {status} {rule.name}")
 
     lines.append("\n**إرشادات النمط:**")
-    for guideline in pattern.guideline_results:
+    for guideline in pattern.guidelines_results:
         status = "👍" if guideline.passed else "👎"
         lines.append(f"  {status} {guideline.name} ({guideline.details})")
 
