@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import List, Dict, Any, Optional
-from src.elliott_wave_engine.wave_structure import WavePattern
+from src.elliott_wave_engine.core.wave_structure import WavePattern
 from src.utils.config_loader import config
 
 def calculate_position_size(account_size: float, risk_per_trade: float, entry_price: float, sl_price: float) -> Optional[float]:

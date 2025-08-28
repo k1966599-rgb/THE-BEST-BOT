@@ -1,5 +1,5 @@
 from typing import List
-from src.elliott_wave_engine.wave_structure import WaveScenario, WavePattern
+from src.elliott_wave_engine.core.wave_structure import WaveScenario, WavePattern
 
 def _format_single_pattern(pattern: WavePattern) -> List[str]:
     """Formats a single wave pattern into a list of report lines."""

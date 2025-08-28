@@ -2,9 +2,8 @@ import unittest
 import pandas as pd
 
 # Import the specific components we are testing in isolation
-from src.elliott_wave_engine.wave_structure import WavePattern, WavePoint
-from src.elliott_wave_engine.validators.impulse_validator import validate_impulse_wave
-from src.elliott_wave_engine.rules import wave_2_retrace_rule, wave_4_overlap_rule, wave_3_shortest_rule
+from src.elliott_wave_engine.core.wave_structure import WavePattern, WavePoint
+from src.elliott_wave_engine.patterns.impulse import validate_impulse_wave, wave_2_retrace_rule, wave_4_overlap_rule, wave_3_shortest_rule
 
 class TestElliottWaveRules(unittest.TestCase):
 
