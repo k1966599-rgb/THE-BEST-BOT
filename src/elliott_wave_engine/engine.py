@@ -122,14 +122,18 @@ class ElliottWaveEngine:
                     p.calculate_confidence()
                 valid_patterns.append(p)
 
-        # --- Complex WXY Waves ---
-        simple_correctives = [p for p in valid_patterns if "Zigzag" in p.pattern_type or "Flat" in p.pattern_type]
-        for p in generate_wxy_waves(self.pivots, simple_correctives):
-            validate_wxy_wave(self, p)
-            if all(r.passed for r in p.rules_results):
-                if strict:
-                    p.calculate_confidence()
-                valid_patterns.append(p)
+        # --- Complex WXY Waves (Temporarily Disabled) ---
+        # This section was causing a performance bottleneck/infinite loop.
+        # It is disabled for now to ensure the bot remains responsive.
+        # It can be debugged and re-enabled in the future.
+        # simple_correctives = [p for p in valid_patterns if "Zigzag" in p.pattern_type or "Flat" in p.pattern_type]
+        # for p in generate_wxy_waves(self.pivots, simple_correctives):
+        #     print("  - Validating WXY Candidate") # Keep a non-spammy log
+        #     validate_wxy_wave(self, p)
+        #     if all(r.passed for r in p.rules_results):
+        #         if strict:
+        #             p.calculate_confidence()
+        #         valid_patterns.append(p)
 
         return valid_patterns
 
