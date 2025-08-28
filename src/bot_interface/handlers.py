@@ -57,37 +57,34 @@ def _run_strategy_sync(strategy_func, symbol):
 async def _create_and_send_analysis_report(update: Update, context: ContextTypes.DEFAULT_TYPE, strategy_func, symbol: str, interval_str: str):
     """
     Runs the heavy analysis in a separate thread and sends the results when complete.
-    This now uses the full "smart entry" logic with DEBUG checkpoints.
     """
     try:
-        print("DEBUG: Checkpoint 1 - Starting analysis.")
         scenarios, data_with_indicators = await asyncio.to_thread(_run_strategy_sync, strategy_func, symbol)
-        print(f"DEBUG: Checkpoint 2 - Analysis complete. Scenarios found: {len(scenarios)}")
 
         if not scenarios:
             response_text = f"لم يتم العثور على أي أنماط موجية لـ **{symbol}** حالياً على فريم {interval_str}."
             await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text, parse_mode='Markdown')
             return
 
-        print("DEBUG: Checkpoint 3 - Formatting wave report.")
         wave_report = format_elliott_wave_report(symbol, interval_str, scenarios)
-        print("DEBUG: Checkpoint 4 - Defining trade setup.")
         trade_setup = define_trade_setup(scenarios, data_with_indicators)
-        print(f"DEBUG: Checkpoint 5 - Trade setup defined. Is setup valid: {trade_setup is not None}")
 
-        if not trade_setup:
-            response_text = f"{wave_report}\n\n*لا توجد فرصة تداول واضحة بناءً على الأنماط الحالية.*"
+        # If no trade setup is found, or if it's just 'Analysis', show the basic report.
+        if not trade_setup or trade_setup.get('type') != 'LONG':
+            reason = "*لا توجد فرصة تداول واضحة بناءً على الأنماط الحالية.*"
+            if trade_setup and trade_setup.get('reason'):
+                reason = f"*{trade_setup.get('reason')}*"
+            response_text = f"{wave_report}\n\n{reason}"
             await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text, parse_mode='Markdown')
             return
 
-        print("DEBUG: Checkpoint 6 - Checking entry conditions.")
+        # If we have a valid LONG trade setup, check its status
         current_price_ltf = data_with_indicators['close'].iloc[-1]
         entry_zone = trade_setup['entry_zone']
         is_in_zone = entry_zone[1] <= current_price_ltf <= entry_zone[0]
-        print(f"DEBUG: Checkpoint 6a - Price in zone: {is_in_zone}")
+        trade_alert = format_trade_alert(trade_setup, interval_str, symbol, scenarios)
 
         if is_in_zone:
-            print("DEBUG: Checkpoint 6b - Checking indicators.")
             latest_indicators = data_with_indicators.iloc[-1]
             stoch_k = latest_indicators.get('STOCHRSIk_14_14_3_3', 50)
             stoch_d = latest_indicators.get('STOCHRSId_14_14_3_3', 50)
@@ -98,23 +95,17 @@ async def _create_and_send_analysis_report(update: Update, context: ContextTypes
             macd_bullish = macd_hist > 0
             volume_confirmed = volume > volume_sma * 1.2
 
-            print("DEBUG: Checkpoint 7 - Formatting final alert.")
             if stoch_bullish and macd_bullish and volume_confirmed:
-                trade_alert = format_trade_alert(trade_setup, interval_str, symbol, scenarios)
                 response_text = f"{wave_report}\n\n{trade_alert}"
             else:
-                trade_alert = format_trade_alert(trade_setup, interval_str, symbol, scenarios)
                 response_text = f"{wave_report}\n\n{trade_alert}\n\n**الحالة:** السعر في منطقة الدخول، ولكننا ننتظر تأكيدًا أقوى من المؤشرات."
         else:
-            print("DEBUG: Checkpoint 7 - Formatting final alert (price not in zone).")
-            trade_alert = format_trade_alert(trade_setup, interval_str, symbol, scenarios)
             response_text = f"{wave_report}\n\n{trade_alert}\n\n**الحالة:** تم تحديد فرصة محتملة، ننتظر وصول السعر إلى منطقة الدخول."
 
-        print("DEBUG: Checkpoint 8 - Sending message.")
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text, parse_mode='Markdown')
 
     except Exception as e:
-        print("--- FATAL ERROR IN HANDLER ---")
+        print(f"--- FATAL ERROR IN HANDLER ---")
         traceback.print_exc()
         response_text = f"حدث خطأ فادح أثناء تحليل {symbol}. يرجى مراجعة السجل."
         await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text, parse_mode='Markdown')
