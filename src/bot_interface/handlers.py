@@ -264,12 +264,3 @@ def load_bot_state() -> bool:
     except (FileNotFoundError, json.JSONDecodeError):
         print("No valid state file found. Defaulting to not running.")
         return False
-
-def initialize_bot_state(application: Application):
-    """Checks the persisted state and starts the scanner if needed."""
-    is_running = load_bot_state()
-    application.bot_data['is_running'] = is_running
-    if is_running:
-        print("Bot was running previously. Restarting background scanner...")
-        scanner_task = asyncio.create_task(run_scanner(application))
-        application.bot_data['scanner_task'] = scanner_task
