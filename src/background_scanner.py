@@ -3,7 +3,7 @@ import datetime
 import traceback
 from telegram.ext import Application
 
-from src.utils.config_loader import get_symbols_to_scan
+from src.utils.config_loader import config
 from src.data.bybit_client import BybitClient
 from src.analysis.support_resistance import find_supply_demand_zones
 from src.strategies.h4_strategy import h4_long_term_strategy
@@ -28,7 +28,7 @@ async def run_scanner(app: Application):
     print("Background scanner started.")
     last_alerted_pattern_time = {}
     client = BybitClient()
-    symbols_to_scan = get_symbols_to_scan()
+    symbols_to_scan = config['symbols_to_scan']
     print(f"Scanner will analyze the following symbols: {symbols_to_scan}")
 
     while True:
@@ -68,10 +68,12 @@ async def run_scanner(app: Application):
                 for strategy_func, timeframe in LOWER_TIMEFRAME_STRATEGIES:
                     # This logic remains the same as before
                     try:
-                        loose_patterns = strategy_func(symbol, strict=False)
-                        if loose_patterns:
-                            latest_loose_pattern = loose_patterns[0]
-                            latest_pattern_timestamp = latest_loose_pattern.points[-1].time
+                        # Unpack the new return tuple (scenarios, data)
+                        loose_scenarios, _ = strategy_func(symbol, strict=False)
+                        if loose_scenarios:
+                            # We only care about the primary pattern of the top scenario for alerts
+                            latest_primary_pattern = loose_scenarios[0].primary_pattern
+                            latest_pattern_timestamp = latest_primary_pattern.points[-1].time
                             alert_key = f"{symbol}-{timeframe}"
 
                             if last_alerted_pattern_time.get(alert_key) != latest_pattern_timestamp:
@@ -79,11 +81,14 @@ async def run_scanner(app: Application):
                                     initial_alert = f"⚠️ فرصة محتملة على {symbol} إطار {timeframe} (عند منطقة طلب 4 ساعات)"
                                     await app.bot.send_message(chat_id=user_id, text=initial_alert)
 
-                                strict_patterns = strategy_func(symbol, strict=True)
-                                if strict_patterns:
-                                    trade_signal = propose_trade(strict_patterns, timeframe)
+                                # Rerun with strict=True to get clean scenarios and the final data with indicators
+                                strict_scenarios, data_with_indicators = strategy_func(symbol, strict=True)
+                                if strict_scenarios:
+                                    # We still propose trades based on the single most likely scenario
+                                    trade_signal = propose_trade(strict_scenarios, timeframe, data_with_indicators)
                                     if trade_signal:
-                                        alert_text = format_trade_alert(trade_signal, timeframe)
+                                        # The formatter will now handle displaying alternate scenarios
+                                        alert_text = format_trade_alert(trade_signal, timeframe, strict_scenarios)
                                         await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
                                         last_alerted_pattern_time[alert_key] = latest_pattern_timestamp
                                         alert_sent_in_cycle = True

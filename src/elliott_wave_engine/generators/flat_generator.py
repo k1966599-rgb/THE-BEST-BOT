@@ -16,11 +16,11 @@ def generate_flat_waves(pivots: List[Dict[str, Any]]) -> Generator[WavePattern, 
         # Bearish Flat (correcting an uptrend) has a H-L-H-L pivot sequence
         if (p[0]['type'] == 'H' and p[1]['type'] == 'L' and
             p[2]['type'] == 'H' and p[3]['type'] == 'L'):
-            points = [WavePoint(x['time'], x['price'], x['type']) for x in p]
-            yield WavePattern(pattern_type="مسطحة هابطة", points=points)
+            points = [WavePoint(x['time'], x['price'], x['type'], x['idx']) for x in p]
+            yield WavePattern(pattern_type="Bearish Flat", points=points)
 
         # Bullish Flat (correcting a downtrend) has a L-H-L-H pivot sequence
         elif (p[0]['type'] == 'L' and p[1]['type'] == 'H' and
               p[2]['type'] == 'L' and p[3]['type'] == 'H'):
-            points = [WavePoint(x['time'], x['price'], x['type']) for x in p]
-            yield WavePattern(pattern_type="مسطحة صاعدة", points=points)
+            points = [WavePoint(x['time'], x['price'], x['type'], x['idx']) for x in p]
+            yield WavePattern(pattern_type="Bullish Flat", points=points)

@@ -1,36 +1,47 @@
+import pandas as pd
 from typing import List, Dict, Any, Optional
 from src.trading.risk_management import calculate_smart_sl_tp
-from src.analysis.wave_structure import BaseWavePattern
+from src.analysis.wave_structure import WaveScenario
 
-def propose_trade(patterns: List[BaseWavePattern], timeframe: str) -> Optional[Dict[str, Any]]:
+def propose_trade(scenarios: List[WaveScenario], timeframe: str, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
-    Analyzes the most likely wave pattern to propose a trade with SL/TP.
+    Analyzes the most likely wave scenario to propose a trade with SL/TP.
     """
-    if not patterns:
+    if not scenarios:
         return None
 
-    # For now, we only analyze the first (most confident) pattern.
-    primary_pattern = patterns[0]
+    # We only propose a trade based on the primary pattern of the most confident scenario.
+    primary_pattern = scenarios[0].primary_pattern
 
     # Refactored logic to determine trade type. This anticipates more
     # descriptive pattern types from the completed engine.
     pattern_type_lower = primary_pattern.pattern_type.lower()
 
-    # Per user request, only propose LONG (BUY) trades for SPOT.
+    # Determine trade type and handle bearish patterns for context only
     if "bullish" in pattern_type_lower or "up" in pattern_type_lower:
         trade_type = "LONG"
+        # Only LONG trades will proceed to SL/TP calculation.
+        trade_params = calculate_smart_sl_tp(primary_pattern, timeframe, historical_data)
+        if not trade_params:
+            return None
+        trade_params['reason'] = f"Potential {primary_pattern.pattern_type} pattern."
+        trade_params['type'] = trade_type
+        return trade_params
+
+    elif "bearish" in pattern_type_lower or "down" in pattern_type_lower:
+        # Per user request, identify bearish patterns for context but do not propose a trade.
+        return {
+            "type": "Analysis",
+            "reason": f"Bearish pattern ({primary_pattern.pattern_type}) detected.",
+            "details": "Short trading is disabled by user configuration."
+        }
+    elif "zigzag" in pattern_type_lower or "flat" in pattern_type_lower:
+        # Identify corrective patterns for context.
+        return {
+            "type": "Analysis",
+            "reason": f"Corrective pattern ({primary_pattern.pattern_type}) may have completed.",
+            "details": "This could signal a potential resumption of the primary trend."
+        }
     else:
-        # If the pattern is not clearly bullish, ignore it and propose no trade.
+        # If the pattern is not one of the recognized types, ignore it.
         return None
-
-    # Only LONG trades will proceed past this point.
-    trade_params = calculate_smart_sl_tp(primary_pattern, timeframe)
-
-    if not trade_params:
-        return None
-
-    # Augment the trade params with more context
-    trade_params['reason'] = f"Potential {primary_pattern.pattern_type} pattern detected."
-    trade_params['type'] = trade_type
-
-    return trade_params

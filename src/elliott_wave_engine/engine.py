@@ -39,6 +39,10 @@ class ElliottWaveEngine:
         new_macd_cols = [col for col in macd_df.columns if col not in self.data.columns]
         self.data = self.data.join(macd_df[new_macd_cols])
 
+        # Calculate ATR for dynamic stop-loss and other calculations
+        # The pandas-ta library will name the column e.g., "ATRr_14"
+        self.data.ta.atr(append=True)
+
     def _find_pivots(self) -> List[Dict[str, Any]]:
         avg_price = self.data['close'].mean()
 

@@ -59,3 +59,8 @@ elliott_wave:
 indicators:
   rsi: {period: 14}
   macd: {fast: 12, slow: 26, signal: 9}
+
+# 5. Risk Management Settings
+risk:
+  account_size: 10000  # Total account value in USD for position sizing
+  risk_per_trade: 0.01 # e.g., 0.01 means 1% risk per trade

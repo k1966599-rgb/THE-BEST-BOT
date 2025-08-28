@@ -95,16 +95,17 @@ async def _handle_strategy_analysis(strategy_func, symbol: str, interval_str: st
     """
     Runs a strategy analysis for a given symbol and formats the response text.
     """
-    patterns = await asyncio.to_thread(strategy_func, symbol)
+    # The strategy function now returns scenarios and the dataframe with indicators
+    scenarios, data_with_indicators = await asyncio.to_thread(strategy_func, symbol)
 
-    if not patterns:
+    if not scenarios:
         return f"لم يتم العثور على أي أنماط موجية لـ **{symbol}** حالياً على فريم {interval_str}."
 
-    # Limit the report to the top 3 most confident patterns to avoid message length errors
-    patterns_to_report = patterns[:3]
+    # The new formatter will handle displaying the primary and alternate scenarios
+    wave_report = format_elliott_wave_report(symbol, interval_str, scenarios)
 
-    wave_report = format_elliott_wave_report(symbol, interval_str, patterns_to_report)
-    trade_signal = propose_trade(patterns, interval_str)
+    # The trade proposer still works based on the list of scenarios
+    trade_signal = propose_trade(scenarios, interval_str, data_with_indicators)
 
     if not trade_signal:
         return wave_report + "\n\n*لا توجد فرصة تداول واضحة لـ **{symbol}** بناءً على الأنماط الحالية.*"
@@ -201,6 +202,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
             if strategy_key in strategy_map:
                 strategy_func, interval_str = strategy_map[strategy_key]
+                # Note: The _handle_strategy_analysis function now handles the tuple return
                 response_text = await _handle_strategy_analysis(strategy_func, symbol, interval_str)
             else:
                 response_text = "استراتيجية غير معروفة."

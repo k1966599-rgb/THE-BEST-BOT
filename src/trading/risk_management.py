@@ -1,10 +1,22 @@
+import pandas as pd
 from typing import List, Dict, Any, Optional
-from src.analysis.wave_structure import BaseWavePattern
+from src.analysis.wave_structure import WavePattern
+from src.utils.config_loader import config
 
-def calculate_smart_sl_tp(pattern: BaseWavePattern, timeframe: str) -> Optional[Dict[str, Any]]:
+def calculate_position_size(account_size: float, risk_per_trade: float, entry_price: float, sl_price: float) -> Optional[float]:
+    """Calculates the position size in the asset."""
+    if (entry_price - sl_price) == 0:
+        return None
+
+    dollar_risk = account_size * risk_per_trade
+    risk_per_asset = entry_price - sl_price
+    position_size = dollar_risk / risk_per_asset
+    return position_size
+
+def calculate_smart_sl_tp(pattern: WavePattern, timeframe: str, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
-    Calculates smart entry, stop-loss, and take-profit levels based on the
-    key points and timeframe of an Elliott Wave pattern.
+    Calculates smart entry, stop-loss (using ATR), take-profit levels, and position size
+    based on the key points of a wave pattern and risk parameters.
     """
     # We need a 5-wave impulse (6 points) to calculate SL/TP reliably.
     if not pattern or len(pattern.points) < 6:
@@ -18,11 +30,21 @@ def calculate_smart_sl_tp(pattern: BaseWavePattern, timeframe: str) -> Optional[
     pullback_amount = (p5.price - p4.price) * 0.236 # e.g., 23.6% pullback of wave 5's length
     entry_price = p5.price - pullback_amount
 
-    # --- Refined Stop-Loss Logic ---
-    # Place stop-loss slightly below wave 4, using a buffer to avoid stop-hunts.
-    impulse_height = p5.price - p0.price
-    buffer = impulse_height * 0.05 # 5% of total impulse height as a safety buffer
-    stop_loss_price = p4.price - buffer
+    # --- ATR-based Stop-Loss Logic ---
+    # Find the ATR column (e.g., 'ATRr_14')
+    atr_col = next((col for col in historical_data.columns if 'atr' in col.lower()), None)
+    if not atr_col:
+        print("ATR column not found in data. Cannot calculate ATR-based SL.")
+        return None
+
+    # Get the latest ATR value
+    latest_atr = historical_data[atr_col].iloc[-1]
+    if pd.isna(latest_atr):
+        print("Latest ATR value is NaN. Cannot calculate SL.")
+        return None
+
+    # Place stop-loss below wave 4 using a 2x ATR buffer.
+    stop_loss_price = p4.price - (2 * latest_atr)
 
     # Basic validation: for a long trade, stop loss must be below entry.
     if stop_loss_price >= entry_price:
@@ -36,18 +58,31 @@ def calculate_smart_sl_tp(pattern: BaseWavePattern, timeframe: str) -> Optional[
 
     # --- Timeframe-Dependent Target Logic ---
     if timeframe == '4h':
-        # Larger targets for long-term trades
+        # Aggressive targets for long-term trades
         tp_multipliers = [1.618, 2.0, 2.618]
+    elif timeframe == '1h':
+        # Medium targets for mid-term trades
+        tp_multipliers = [1.0, 1.618, 2.0]
     else:
-        # More conservative targets for short-term/scalp trades
+        # Conservative targets for short-term/scalp trades (15m, 5m, 3m)
         tp_multipliers = [0.618, 1.0, 1.618]
 
-    targets = [entry_price + (impulse_height * m) for m in tp_multipliers]
+    # Projecting from the top of the impulse wave (p5) is a standard method.
+    targets = [p5.price + (impulse_height * m) for m in tp_multipliers]
+
+    # --- Position Sizing ---
+    account_size = config.get('risk', {}).get('account_size')
+    risk_per_trade = config.get('risk', {}).get('risk_per_trade')
+
+    position_size = None
+    if account_size and risk_per_trade:
+        position_size = calculate_position_size(account_size, risk_per_trade, entry_price, stop_loss_price)
 
     trade_params = {
         "entry": entry_price,
         "stop_loss": stop_loss_price,
-        "targets": targets
+        "targets": targets,
+        "position_size": position_size
     }
 
     return trade_params
