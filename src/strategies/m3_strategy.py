@@ -3,8 +3,8 @@ import traceback
 from typing import List, Tuple
 import pandas as pd
 from src.data.bybit_client import BybitClient
-from src.elliott_wave_engine.engine import ElliottWaveEngine
-from src.elliott_wave_engine.wave_structure import WaveScenario
+from src.elliott_wave_engine.core.engine import ElliottWaveEngine
+from src.elliott_wave_engine.core.wave_structure import WaveScenario
 
 def m3_scalp_strategy(symbol: str, strict: bool = True) -> Tuple[List[WaveScenario], pd.DataFrame]:
     """
