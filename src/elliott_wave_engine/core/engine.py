@@ -7,7 +7,7 @@ from ..indicators.pivots import find_pivots
 from ..indicators.momentum import calculate_rsi, calculate_macd
 
 # Import pattern logic from the new modular structure
-from ..patterns.impulse import generate_impulse_waves, validate_impulse_wave, score_impulse_wave_guidelines
+from ..patterns.impulse import generate_impulse_waves, validate_impulse_wave
 from ..patterns.zigzag import generate_zigzag_waves, validate_zigzag_wave
 from ..patterns.flat import generate_flat_waves, validate_flat_wave
 from ..patterns.triangle import generate_triangle_waves, validate_triangle_wave
@@ -74,21 +74,16 @@ class ElliottWaveEngine:
             "Triangle": validate_triangle_wave,
             "Diagonal": validate_diagonal_wave,
         }
-        pattern_scorers = {
-            "Impulse": score_impulse_wave_guidelines,
-        }
-
         for name, generator_func in pattern_generators.items():
             for p in generator_func(self.pivots):
                 validator_func = pattern_validators.get(name)
                 if validator_func:
-                    validator_func(self, p)
+                    validator_func(self, p) # This now handles rules AND guidelines
 
+                # The validator function populates rules_results. We check if all cardinal rules passed.
                 if all(r.passed for r in p.rules_results):
                     if strict:
-                        scorer_func = pattern_scorers.get(name)
-                        if scorer_func:
-                            scorer_func(self, p)
+                        # The validator also populates guidelines_results. Now we can calculate the score.
                         p.calculate_confidence()
                     valid_patterns.append(p)
 
