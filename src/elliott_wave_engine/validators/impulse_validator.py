@@ -20,10 +20,11 @@ def validate_impulse_wave(engine, pattern: WavePattern):
     if len(pattern.points) != 6:
         return
 
-    # Add results from the three main impulse wave rules
-    pattern.add_rule_result(wave_2_retrace_rule(pattern.points))
-    pattern.add_rule_result(wave_4_overlap_rule(pattern.points))
-    pattern.add_rule_result(wave_3_shortest_rule(pattern.points))
+    # Add results from the three main impulse wave rules by directly appending
+    # to the list. This is a more defensive approach.
+    pattern.rules_results.append(wave_2_retrace_rule(pattern.points))
+    pattern.rules_results.append(wave_4_overlap_rule(pattern.points))
+    pattern.rules_results.append(wave_3_shortest_rule(pattern.points))
 
 
 def score_impulse_wave_guidelines(engine, pattern: WavePattern):
@@ -34,20 +35,20 @@ def score_impulse_wave_guidelines(engine, pattern: WavePattern):
     if len(pattern.points) != 6:
         return
 
-    # Add results from common guidelines
-    pattern.add_guideline_result(wave_3_extension_rule(pattern.points))
-    pattern.add_guideline_result(wave_4_retrace_rule(pattern.points))
+    # Add results from common guidelines by directly appending.
+    pattern.guidelines_results.append(wave_3_extension_rule(pattern.points))
+    pattern.guidelines_results.append(wave_4_retrace_rule(pattern.points))
 
     # Add results from new momentum-based guidelines
     # These require the historical data with indicators, which is available in the engine
-    pattern.add_guideline_result(wave_3_momentum_rule(pattern.points, engine.data))
-    pattern.add_guideline_result(wave_5_divergence_rule(pattern.points, engine.data))
+    pattern.guidelines_results.append(wave_3_momentum_rule(pattern.points, engine.data))
+    pattern.guidelines_results.append(wave_5_divergence_rule(pattern.points, engine.data))
 
     # Add check for 5th wave truncation
-    pattern.add_guideline_result(wave_5_truncation_rule(pattern.points))
+    pattern.guidelines_results.append(wave_5_truncation_rule(pattern.points))
 
     # Add check for the Rule of Alternation
-    pattern.add_guideline_result(rule_of_alternation(pattern.points))
+    pattern.guidelines_results.append(rule_of_alternation(pattern.points))
 
     # Add check for time similarity between waves 2 and 4
-    pattern.add_guideline_result(wave_2_4_time_similarity_rule(pattern.points))
+    pattern.guidelines_results.append(wave_2_4_time_similarity_rule(pattern.points))

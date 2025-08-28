@@ -89,7 +89,7 @@ async def run_scanner(app: Application):
                                 if strict_scenarios and data_with_indicators is not None:
                                     trade_signal = propose_trade(strict_scenarios, timeframe, data_with_indicators)
                                     if trade_signal:
-                                        alert_text = format_trade_alert(trade_signal, timeframe, strict_scenarios)
+                                        alert_text = format_trade_alert(trade_signal, timeframe, symbol, strict_scenarios)
                                         await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
                                         last_alerted_pattern_time[alert_key] = latest_pattern_timestamp
                                         alert_sent_in_cycle = True

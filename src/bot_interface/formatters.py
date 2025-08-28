@@ -68,7 +68,7 @@ def format_elliott_wave_report(symbol: str, interval_str: str, scenarios: List[W
 
 from src.utils.config_loader import config
 
-def format_trade_alert(trade_signal: dict, interval_str: str) -> str:
+def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scenarios: List[WaveScenario]) -> str:
     """
     Formats a trade signal or an analysis event into a concise alert message.
     """
@@ -101,14 +101,7 @@ def format_trade_alert(trade_signal: dict, interval_str: str) -> str:
     # --- Build Position Sizing Text ---
     position_size_text = ""
     if position_size:
-        # Extract symbol from the reason text, e.g., "Potential Bullish Impulse pattern."
-        # This is fragile; a better way would be to pass the symbol explicitly. For now, this works.
-        try:
-            symbol = trade_signal['reason'].split(' ')[-2]
-            asset = symbol.replace("USDT", "") # e.g., BTC, ETH
-        except IndexError:
-            asset = "Asset"
-
+        asset = symbol.replace("USDT", "") # e.g., BTC, ETH
         account_size = config.get('risk', {}).get('account_size', 'N/A')
         risk_percentage = config.get('risk', {}).get('risk_per_trade', 0) * 100
 
@@ -119,14 +112,25 @@ def format_trade_alert(trade_signal: dict, interval_str: str) -> str:
             f"- **حجم الصفقة المقترح:** {position_size:.4f} {asset}\n"
         )
 
+    # --- Build Alternate Scenarios Text ---
+    alternate_scenarios_text = ""
+    alternate_scenarios = scenarios[1:2] # Show one alternate
+    if alternate_scenarios:
+        alt_pattern = alternate_scenarios[0].primary_pattern
+        alternate_scenarios_text = (
+            f"\n\n**سيناريو بديل:** {alt_pattern.pattern_type} (ثقة: {alt_pattern.confidence_score:.1f}%)"
+        )
+
     alert_text = (
         f"**🚨 تنبيه فرصة تداول جديدة! 🚨**\n\n"
+        f"**العملة:** {symbol}\n"
         f"**الإطار الزمني:** {interval_str}\n"
         f"**السبب:** {trade_signal['reason']}\n"
         f"**نوع الصفقة:** {trade_signal['type']}\n\n"
         f"**سعر الدخول المقترح:** ${entry_price:,.2f}\n"
         f"**وقف الخسارة:** ${stop_loss_price:,.2f} (-{sl_percentage:.1f}%)\n"
         f"**الأهداف:**\n{targets_text}"
-        f"{position_size_text}" # Append the position sizing text
+        f"{position_size_text}"
+        f"{alternate_scenarios_text}"
     )
     return alert_text
