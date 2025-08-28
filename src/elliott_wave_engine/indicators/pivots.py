@@ -9,9 +9,9 @@ def find_pivots(df: pd.DataFrame, prominence: float = 1.0) -> List[Dict[str, Any
     low_peaks_indices, _ = find_peaks(-df['low'], prominence=prominence)
     pivots = []
     for i in high_peaks_indices:
-        pivots.append({"time": df.index[i], "price": df['high'][i], "type": "H"})
+        pivots.append({"time": df.index[i], "price": df['high'][i], "type": "H", "idx": i})
     for i in low_peaks_indices:
-        pivots.append({"time": df.index[i], "price": df['low'][i], "type": "L"})
+        pivots.append({"time": df.index[i], "price": df['low'][i], "type": "L", "idx": i})
     pivots.sort(key=lambda p: p['time'])
     if not pivots: return []
     cleaned_pivots = [pivots[0]]
