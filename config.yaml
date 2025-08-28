@@ -1,0 +1,60 @@
+# Configuration file for the Elliott Wave Analysis Bot
+
+# 0. Telegram Bot Credentials
+telegram:
+  token: "8470503540:AAFHfcupB1BY5ce4PzlImYhNk4cv3Ce-7rE"
+  chat_id: "782008836"
+
+# 1. List of symbols for the automatic scanner to analyze
+symbols_to_scan:
+  - BTCUSDT
+  - ETHUSDT
+  - SOLUSDT
+  - XRPUSDT
+  - DOGEUSDT
+  - ADAUSDT
+  - AVAXUSDT
+  - TRXUSDT
+  - DOTUSDT
+  - LINKUSDT
+  - MATICUSDT
+  - SHIBUSDT
+  - LTCUSDT
+  - BCHUSDT
+  - UNIUSDT
+  - ATOMUSDT
+  - ETCUSDT
+  - XLMUSDT
+  - NEARUSDT
+  - ALGOUSDT
+  - VETUSDT
+  - ICPUSDT
+  - FILUSDT
+  - EOSUSDT
+  - XTZUSDT
+  - AAVEUSDT
+  - MKRUSDT
+  - FTMUSDT
+  - SANDUSDT
+  - MANAUSDT
+
+# 2. Pivot Detection Settings
+pivot_sensitivity:
+  default: 4.0
+
+# 3. Elliott Wave Pattern Rules & Guidelines
+elliott_wave:
+  motive_wave:
+    w2_retracement: {min: 0.382, max: 0.618}
+    w3_extension: {min: 1.618}
+    w4_retracement: {min: 0.236, max: 0.382}
+  zigzag:
+    b_retracement: {max: 0.618}
+  flat:
+    b_retracement_min: 0.90
+    regular_flat_b_retrace_max: 1.05
+
+# 4. Technical Indicator Settings
+indicators:
+  rsi: {period: 14}
+  macd: {fast: 12, slow: 26, signal: 9}

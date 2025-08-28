@@ -1,0 +1,10 @@
+python-telegram-bot
+pybit
+pandas
+numpy==1.26.4
+pandas-ta
+scipy
+requests
+PyYAML
+setuptools
+pytest
