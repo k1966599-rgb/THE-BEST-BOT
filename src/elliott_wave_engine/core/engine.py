@@ -4,8 +4,8 @@ from collections import defaultdict
 import pandas as pd
 
 from .wave_structure import WavePoint, WavePattern, ComplexWavePattern, WaveScenario
-from ..indicators.pivots import find_pivots
 from ..indicators.momentum import calculate_rsi, calculate_macd
+from scipy.signal import find_peaks
 
 # Import pattern logic from the new modular structure
 from ..patterns.impulse import generate_impulse_waves, validate_impulse_wave
@@ -35,36 +35,62 @@ class ElliottWaveEngine:
         self.data.ta.atr(append=True)
 
     def _find_pivots(self) -> List[Dict[str, Any]]:
-        # Use Average True Range (ATR) for prominence calculation.
-        # This makes pivot detection adaptive to each asset's specific volatility.
-        # A pivot is only considered significant if it's a multiple of the recent average range.
+        """
+        Internal method to find pivot points. It incorporates robust checks for
+        data integrity and uses an adaptive ATR-based prominence.
+        """
+        # 1. --- Robustness Check: Ensure data has a DatetimeIndex ---
+        # This is the permanent fix for the 'int' object has no attribute 'strftime' crash.
+        if not isinstance(self.data.index, pd.DatetimeIndex):
+            if 'timestamp' in self.data.columns:
+                logging.warning(f"Fixing incorrect index for {self.symbol}/{self.timeframe}.")
+                self.data = self.data.set_index('timestamp')
+                if not isinstance(self.data.index, pd.DatetimeIndex):
+                     self.data.index = pd.to_datetime(self.data.index)
+            else:
+                raise TypeError(f"Cannot find 'timestamp' column to fix index for {self.symbol}/{self.timeframe}.")
+
+        # 2. --- Calculate Prominence using ATR ---
         if 'ATRr_14' not in self.data.columns or self.data['ATRr_14'].isnull().all():
             avg_price = self.data['close'].mean()
             prominence = avg_price * 0.01
-            logging.warning(f"ATR data not found for {self.symbol} on {self.timeframe}. Falling back to price-percent prominence.")
-            return find_pivots(self.data, prominence=prominence)
+            logging.warning(f"ATR data not found for {self.symbol}/{self.timeframe}. Falling back to price-percent prominence.")
+        else:
+            mean_atr = self.data['ATRr_14'].mean()
+            if not mean_atr or mean_atr <= 0 or pd.isna(mean_atr):
+                avg_price = self.data['close'].mean()
+                prominence = avg_price * 0.01
+                logging.warning(f"Invalid ATR ({mean_atr}) for {self.symbol}/{self.timeframe}. Falling back to price-percent prominence.")
+            else:
+                prominence_map = {
+                    '4h':  mean_atr * 8.0, '1h':  mean_atr * 5.0, '15m': mean_atr * 2.5,
+                    '5m':  mean_atr * 2.0, '3m':  mean_atr * 1.5,
+                }
+                prominence = prominence_map.get(str(self.timeframe), mean_atr * 3.0)
 
-        mean_atr = self.data['ATRr_14'].mean()
+        # 3. --- Find and Clean Pivots ---
+        if 'high' not in self.data.columns or 'low' not in self.data.columns:
+            raise ValueError("Input DataFrame must contain 'high' and 'low' columns.")
 
-        # CRITICAL: Ensure mean_atr is a sane, positive value before using it.
-        # A prominence of 0 or NaN will crash the underlying scipy function.
-        if not mean_atr or mean_atr <= 0 or pd.isna(mean_atr):
-            avg_price = self.data['close'].mean()
-            prominence = avg_price * 0.01
-            logging.warning(f"Invalid ATR value ({mean_atr}) for {self.symbol} on {self.timeframe}. Falling back to price-percent prominence.")
-            return find_pivots(self.data, prominence=prominence)
+        high_peaks_indices, _ = find_peaks(self.data['high'], prominence=prominence)
+        low_peaks_indices, _ = find_peaks(-self.data['low'], prominence=prominence)
 
-        # Multipliers for ATR. Higher values find more major pivots.
-        # Increased again based on user feedback that 5.0 was not enough for 4h.
-        prominence_map = {
-            '4h':  mean_atr * 8.0,
-            '1h':  mean_atr * 5.0,
-            '15m': mean_atr * 2.5,
-            '5m':  mean_atr * 2.0,
-            '3m':  mean_atr * 1.5,
-        }
-        prominence = prominence_map.get(str(self.timeframe), mean_atr * 3.0) # Default prominence
-        return find_pivots(self.data, prominence=prominence)
+        pivots = []
+        for i in high_peaks_indices:
+            pivots.append({"time": self.data.index[i], "price": self.data['high'].iloc[i], "type": "H", "idx": i})
+        for i in low_peaks_indices:
+            pivots.append({"time": self.data.index[i], "price": self.data['low'].iloc[i], "type": "L", "idx": i})
+
+        pivots.sort(key=lambda p: p['time'])
+
+        if not pivots: return []
+
+        cleaned_pivots = [pivots[0]]
+        for i in range(1, len(pivots)):
+            if pivots[i]['type'] != cleaned_pivots[-1]['type']:
+                cleaned_pivots.append(pivots[i])
+
+        return cleaned_pivots
 
     def run_analysis(self, strict: bool = True) -> List[WaveScenario]:
         all_valid_patterns = self._find_all_patterns(strict=strict)
