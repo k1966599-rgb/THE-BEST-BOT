@@ -91,6 +91,8 @@ def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: 
             "position_size": position_size,
             "reason": f"Fib Retracement from {p_start.price:.2f} to {p_end.price:.2f}"
         }
-    except (IndexError, KeyError) as e:
-        print(f"DEBUG: Could not calculate fib parameters for pattern {pattern.pattern_type} due to structure error: {e}")
+    except Exception as e:
+        # This is a broad exception handler to ensure the function never crashes the caller.
+        # It catches any unexpected error during parameter calculation (e.g., from weird data or pattern structures).
+        print(f"DEBUG: Could not calculate fib parameters for pattern {pattern.pattern_type} due to an unexpected error: {e}")
         return None
