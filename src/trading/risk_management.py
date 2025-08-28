@@ -86,3 +86,51 @@ def calculate_smart_sl_tp(pattern: WavePattern, timeframe: str, historical_data:
     }
 
     return trade_params
+
+
+def calculate_zigzag_trade(pattern: WavePattern, timeframe: str, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
+    """
+    Calculates a trend-following trade setup after a Bullish Zigzag correction.
+    """
+    if len(pattern.points) != 4:
+        return None
+
+    p0, pA, pB, pC = pattern.points
+
+    # --- Entry Logic: Enter on break of Wave B ---
+    entry_price = pB.price
+
+    # --- Stop-Loss Logic: Place SL below the low of the correction (Wave C) ---
+    atr_col = next((col for col in historical_data.columns if 'atr' in col.lower()), None)
+    if not atr_col: return None
+    latest_atr = historical_data[atr_col].iloc[-1]
+    if pd.isna(latest_atr): return None
+
+    stop_loss_price = pC.price - (2 * latest_atr)
+
+    if stop_loss_price >= entry_price:
+        return None
+
+    # --- Take-Profit Logic ---
+    # Target 1: The start of the correction (a significant resistance level)
+    target1 = p0.price
+    # Target 2: Fibonacci projection
+    correction_height = p0.price - pC.price
+    target2 = entry_price + (correction_height * 1.618)
+
+    targets = [target1, target2]
+
+    # --- Position Sizing ---
+    account_size = config.get('risk', {}).get('account_size')
+    risk_per_trade = config.get('risk', {}).get('risk_per_trade')
+
+    position_size = None
+    if account_size and risk_per_trade:
+        position_size = calculate_position_size(account_size, risk_per_trade, entry_price, stop_loss_price)
+
+    return {
+        "entry": entry_price,
+        "stop_loss": stop_loss_price,
+        "targets": targets,
+        "position_size": position_size
+    }

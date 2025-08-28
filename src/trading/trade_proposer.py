@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import List, Dict, Any, Optional
-from src.trading.risk_management import calculate_smart_sl_tp
+from src.trading.risk_management import calculate_smart_sl_tp, calculate_zigzag_trade
 from src.elliott_wave_engine.wave_structure import WaveScenario
 
 def propose_trade(scenarios: List[WaveScenario], timeframe: str, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
@@ -30,13 +30,31 @@ def propose_trade(scenarios: List[WaveScenario], timeframe: str, historical_data
 
     elif "bearish" in pattern_type_lower or "down" in pattern_type_lower:
         # Per user request, identify bearish patterns for context but do not propose a trade.
+        # We pass the pattern back so the formatter can display its details.
         return {
             "type": "Analysis",
+            "pattern": primary_pattern,
             "reason": f"Bearish pattern ({primary_pattern.pattern_type}) detected.",
             "details": "Short trading is disabled by user configuration."
         }
-    elif "zigzag" in pattern_type_lower or "flat" in pattern_type_lower:
-        # Identify corrective patterns for context.
+    elif "zigzag" in pattern_type_lower:
+        # For Bullish Zigzags, we can propose a trend-following trade.
+        if "bullish" in pattern_type_lower:
+            trade_type = "LONG"
+            trade_params = calculate_zigzag_trade(primary_pattern, timeframe, historical_data)
+            if not trade_params:
+                return None
+            trade_params['reason'] = f"End of corrective {primary_pattern.pattern_type} pattern."
+            trade_params['type'] = trade_type
+            return trade_params
+        else: # For Bearish Zigzags, provide context only.
+            return {
+                "type": "Analysis",
+                "reason": f"Corrective pattern ({primary_pattern.pattern_type}) may have completed.",
+                "details": "This could signal a potential resumption of the primary trend."
+            }
+    elif "flat" in pattern_type_lower:
+        # Flats are also corrective, but we will only analyze them for now.
         return {
             "type": "Analysis",
             "reason": f"Corrective pattern ({primary_pattern.pattern_type}) may have completed.",

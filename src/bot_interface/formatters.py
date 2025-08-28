@@ -74,14 +74,24 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
     """
     # Handle analysis-only events (e.g., bearish patterns)
     if trade_signal.get('type') == "Analysis":
-        reason = trade_signal.get('reason', 'تحليل سياق')
+        pattern = trade_signal.get('pattern')
         details = trade_signal.get('details', 'تم رصد نمط هام.')
-        return (
-            f"**⚠️ تنبيه تحليلي ⚠️**\n\n"
-            f"**الإطار الزمني:** {interval_str}\n"
-            f"**السبب:** {reason}\n"
-            f"**ملاحظة:** {details}"
-        )
+
+        # If the full pattern is provided, format it
+        if pattern:
+            report_lines = [f"**-- تحليل سياق لـ {symbol} ({interval_str}) --**"]
+            report_lines.extend(_format_single_pattern(pattern))
+            report_lines.append(f"\n**ملاحظة:** {details}")
+            return "\n".join(report_lines)
+        # Fallback for simple analysis messages
+        else:
+            reason = trade_signal.get('reason', 'تحليل سياق')
+            return (
+                f"**⚠️ تنبيه تحليلي ⚠️**\n\n"
+                f"**الإطار الزمني:** {interval_str}\n"
+                f"**السبب:** {reason}\n"
+                f"**ملاحظة:** {details}"
+            )
 
     # Format a standard trade proposal
     entry_price = trade_signal['entry']
