@@ -21,62 +21,67 @@ def get_fib_extension(p_start: float, p_end: float, p_correction: float) -> Dict
         for level in [1.0, 1.272, 1.618, 2.0, 2.618]
     }
 
+def _calculate_rr_ratio(entry: float, stop_loss: float, targets: List[float]) -> Optional[float]:
+    """Calculates the Risk/Reward ratio for the first target."""
+    if not targets or (entry - stop_loss) == 0:
+        return None
+
+    reward = targets[0] - entry
+    risk = entry - stop_loss
+    return round(reward / risk, 2) if risk > 0 else None
+
+def _calculate_confidence_score(pattern: WavePattern) -> float:
+    """
+    Calculates a confidence score for the trade setup.
+    For now, it's primarily based on the underlying Elliott Wave pattern's confidence.
+    """
+    # Base score is the pattern's confidence from the engine's guideline checks
+    base_score = pattern.confidence_score
+
+    # Future enhancements could add points for other confluences (e.g., proximity to key moving averages, etc.)
+
+    return round(base_score, 2)
+
 def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
-    Calculates trade parameters based on the type of Elliott Wave pattern.
-    - For Impulse waves (1-5), it anticipates a correction to enter.
-    - For Corrective waves (ABC, ABCDE), it enters after the correction is believed to be complete.
+    Calculates trade parameters, now including R:R and a confidence score.
     """
     try:
         pattern_type = pattern.pattern_type.lower()
         points = pattern.points
 
-        # --- Strategy 1: Enter on a correction AFTER a 5-wave Impulse ---
         if "impulse" in pattern_type and len(points) >= 6:
-            p0, p1, p2, p3, p4, p5 = points
-
+            p0, _, _, _, _, p5 = points
             retracements = get_fib_retracement(p0.price, p5.price)
             entry_zone_top = retracements.get(0.5)
             entry_zone_bottom = retracements.get(0.618)
             if entry_zone_top is None or entry_zone_bottom is None: return None
-
             entry_price = entry_zone_bottom
-            stop_loss_price = p0.price # Invalidation is the start of the impulse
-
-            # Targets are extensions from the potential bottom of the correction (entry_price)
+            stop_loss_price = p0.price
             targets = get_fib_extension(p0.price, p5.price, entry_price)
-
-            reason = f"انتظار تصحيح للموجة الدافعة من {p0.price:.2f} إلى {p5.price:.2f}"
-
-        # --- Strategy 2: Enter AFTER a corrective pattern (Zigzag, Flat, Triangle) ---
+            reason = f"انتظار تصحيح للموجة الدافعة"
         elif any(corr in pattern_type for corr in ["zigzag", "flat", "triangle"]):
-            if len(points) < 4: return None # Need at least p0-A-B-C
-
+            if len(points) < 4: return None
             p_correction_start = points[0]
-            if "triangle" in pattern_type and len(points) >= 6:
-                p_correction_end = points[5] # Point E
-                p_breakout_level = points[3] # Point D
-            else: # ABC patterns
-                p_correction_end = points[3] # Point C
-                p_breakout_level = points[2] # Point B
-
-            # Entry is a breakout above a key level of the correction
+            p_breakout_level = points[2] if "zigzag" in pattern_type or "flat" in pattern_type else points[3] # B or D
+            p_correction_end = points[3] if "zigzag" in pattern_type or "flat" in pattern_type else points[5] # C or E
             entry_price = p_breakout_level.price
-            stop_loss_price = p_correction_end.price # Invalidation is the low of the correction
-
-            # Targets are extensions from the end of the correction
+            stop_loss_price = p_correction_end.price
             targets = get_fib_extension(p_correction_start.price, p_breakout_level.price, p_correction_end.price)
-
-            reason = f"الدخول بعد انتهاء نمط تصحيحي من نوع {pattern.pattern_type}"
-
+            reason = f"الدخول بعد انتهاء نمط تصحيحي"
         else:
-            # Pattern type is not supported for trade calculation
             return None
 
-        # --- Common final calculations ---
         if stop_loss_price >= entry_price: return None
 
-        # --- Position Sizing (Optional) ---
+        final_targets = sorted(list(targets.values()))
+        if not final_targets: return None
+
+        # --- NEW: Calculate R:R and Confidence ---
+        rr_ratio = _calculate_rr_ratio(entry_price, stop_loss_price, final_targets)
+        confidence_score = _calculate_confidence_score(pattern)
+
+        # --- Position Sizing ---
         account_size = config.get('risk', {}).get('account_size')
         risk_per_trade = config.get('risk', {}).get('risk_per_trade')
         position_size = None
@@ -90,11 +95,14 @@ def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: 
             "entry_zone": (entry_zone_top, entry_zone_bottom) if "impulse" in pattern_type else (entry_price, entry_price),
             "entry": entry_price,
             "stop_loss": stop_loss_price,
-            "targets": sorted(list(targets.values())),
+            "targets": final_targets,
             "position_size": position_size,
-            "reason": reason
+            "reason": f"{reason} ({pattern.pattern_type})",
+            "pattern_type": pattern.pattern_type,
+            "rr_ratio": rr_ratio,
+            "confidence_score": confidence_score
         }
 
-    except (IndexError, KeyError, TypeError) as e:
+    except (IndexError, KeyError, TypeError, AttributeError) as e:
         print(f"DEBUG: Could not calculate fib parameters for pattern {pattern.pattern_type} due to structure error: {e}")
         return None
