@@ -1,6 +1,9 @@
 import pandas as pd
 from typing import Dict, Any, Optional, List
 
+# Import utils and configs
+from src.utils.config_loader import config
+
 # Import strategy functions
 from src.strategies.h4_strategy import h4_long_term_strategy
 from src.strategies.h1_strategy import h1_strategy
@@ -22,6 +25,8 @@ class AnalysisManager:
             "final_decision": "REJECT",
             "decision_path": []
         }
+        self.min_rr = config.get('trading_rules', {}).get('min_rr_ratio', 2.0)
+        self.min_confidence = config.get('trading_rules', {}).get('min_confidence_score', 70)
 
     def _run_phase(self, phase_name: str, tf_str: str, strategy_func, htf_context: Optional[dict] = None) -> bool:
         """Generic function to run a phase of the analysis."""
@@ -64,36 +69,35 @@ class AnalysisManager:
         return True
 
     def _confirm_entry_conditions(self) -> None:
-        """Final confirmation using 5m and 3m data."""
-        self.context['decision_path'].append("Confirm(5m/3m)")
+        """Final confirmation using rules, 5m and 3m data."""
+        self.context['decision_path'].append("Confirm(Rules/5m/3m)")
         trade_setup = self.context['final_trade_setup']
 
-        # Phase 4: 5m Confirmation (e.g., breakout)
-        _, data_5m = m5_scalp_strategy(self.symbol)
-        if data_5m.empty:
-            self.context['decision_path'].append("->DEFER:No5m_data")
-            self.context['final_decision'] = "DEFER"
+        # --- Rule Check: R:R and Confidence ---
+        if trade_setup.get('rr_ratio', 0) < self.min_rr:
+            self.context['decision_path'].append(f"->REJECT:RR_low({trade_setup.get('rr_ratio', 0)})")
             return
+        self.context['decision_path'].append(f"->OK:RR({trade_setup.get('rr_ratio', 0)})")
 
-        # Simple confirmation: last 5m candle must be bullish
-        last_5m_candle = data_5m.iloc[-1]
-        if last_5m_candle['close'] <= last_5m_candle['open']:
+        if trade_setup.get('confidence_score', 0) < self.min_confidence:
+            self.context['decision_path'].append(f"->REJECT:Conf_low({trade_setup.get('confidence_score', 0)})")
+            return
+        self.context['decision_path'].append(f"->OK:Conf({trade_setup.get('confidence_score', 0)})")
+
+        # Phase 4: 5m Confirmation
+        _, data_5m = m5_scalp_strategy(self.symbol)
+        if data_5m.empty or data_5m.iloc[-1]['close'] <= data_5m.iloc[-1]['open']:
             self.context['decision_path'].append("->DEFER:5m_not_bullish")
             self.context['final_decision'] = "DEFER"
             return
-
         self.context['decision_path'].append("->OK:5m_bullish")
 
-        # Phase 5: 3m Entry Trigger (Price in zone + Indicators)
+        # Phase 5: 3m Entry Trigger
         _, data_3m = m3_scalp_strategy(self.symbol)
-        if data_3m.empty:
-            self.context['decision_path'].append("->DEFER:No3m_data")
-            self.context['final_decision'] = "DEFER"
-            return
+        if data_3m.empty: return
 
         current_price = data_3m['close'].iloc[-1]
         entry_zone = trade_setup['entry_zone']
-
         if not (entry_zone[1] <= current_price <= entry_zone[0]):
             self.context['decision_path'].append(f"->DEFER:Price_not_in_zone")
             self.context['final_decision'] = "DEFER"
@@ -113,15 +117,11 @@ class AnalysisManager:
         """Executes the full, top-down analysis pipeline."""
         print(f"--- Starting Hierarchical Analysis for {self.symbol} ---")
         if not self._run_phase("Strategic", "4h", h4_long_term_strategy): return
-
-        h4_context = {"scenarios": self.context['4h_scenarios']}
+        h4_context = {"scenarios": self.context.get('4h_scenarios')}
         if not self._run_phase("Tactical", "1h", h1_strategy, h4_context): return
-
-        h1_context = {"scenarios": self.context['1h_scenarios']}
+        h1_context = {"scenarios": self.context.get('1h_scenarios')}
         if not self._run_phase("Tactical", "15m", m15_scalp_strategy, h1_context): return
-
         if not self._generate_trade_setup(): return
-
         self._confirm_entry_conditions()
 
         print(f"--- Analysis for {self.symbol} Complete. ---")

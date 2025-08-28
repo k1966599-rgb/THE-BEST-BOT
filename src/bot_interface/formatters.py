@@ -159,10 +159,19 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
             f"\n\n**سيناريو بديل:** {alt_pattern.pattern_type} (ثقة: {alt_pattern.confidence_score:.1f}%)"
         )
 
+    # --- NEW: R:R and Confidence Score ---
+    rr_ratio = trade_signal.get('rr_ratio')
+    confidence_score = trade_signal.get('confidence_score')
+
+    rr_text = f"⚖️ **R:R Ratio:** {rr_ratio:.2f}" if rr_ratio is not None else ""
+    confidence_text = f"📈 **الثقة:** {confidence_score:.0f}%" if confidence_score is not None else ""
+
     alert_text = (
         f"💎 **صفقة جاهزة | {symbol} | {interval_str}** 💎\n\n"
         f"**النمط:** `{trade_signal.get('pattern_type', 'N/A')}`\n"
-        f"**السبب:** {trade_signal['reason']}\n\n"
+        f"**السبب:** {trade_signal.get('reason', 'N/A')}\n"
+        f"{rr_text}\n"
+        f"{confidence_text}\n\n"
         f"{entry_text}"
         f"**وقف الخسارة:** `${stop_loss_price:{sl_format}}` (`-{sl_percentage:.1f}%`)\n"
         f"**الأهداف:**\n{targets_text}"
