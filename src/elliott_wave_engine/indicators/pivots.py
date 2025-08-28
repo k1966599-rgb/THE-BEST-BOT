@@ -3,6 +3,10 @@ from scipy.signal import find_peaks
 from typing import List, Dict, Any
 
 def find_pivots(df: pd.DataFrame, prominence: float = 1.0) -> List[Dict[str, Any]]:
+    # Defensive check to ensure the index is of the correct type.
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise TypeError(f"DataFrame index in find_pivots must be a DatetimeIndex, but it is {type(df.index)}")
+
     if 'high' not in df.columns or 'low' not in df.columns:
         raise ValueError("Input DataFrame must contain 'high' and 'low' columns.")
     high_peaks_indices, _ = find_peaks(df['high'], prominence=prominence)
