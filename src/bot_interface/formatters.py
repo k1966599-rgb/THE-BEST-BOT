@@ -132,11 +132,13 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
 
 
     targets_text_lines = []
+    hit_targets_indices = trade_signal.get('hit_targets_indices', [])
     for i, target_price in enumerate(trade_signal['targets']):
+        is_hit = "✅" if i in hit_targets_indices else ""
         tp_percentage = abs((target_price - entry_price) / entry_price) * 100
         tp_format = _get_dynamic_price_format(target_price)
         targets_text_lines.append(
-            f"  - الهدف {i+1}: ${target_price:{tp_format}} (+{tp_percentage:.1f}%)"
+            f"  - الهدف {i+1}: ${target_price:{tp_format}} (+{tp_percentage:.1f}%) {is_hit}"
         )
     targets_text = "\n".join(targets_text_lines)
 
