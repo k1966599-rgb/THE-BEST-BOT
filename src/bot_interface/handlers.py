@@ -10,7 +10,7 @@ from src.strategies.h4_strategy import h4_long_term_strategy
 from src.strategies.m15_strategy import m15_scalp_strategy
 from src.strategies.m5_strategy import m5_scalp_strategy
 from src.strategies.m3_strategy import m3_scalp_strategy
-from src.trading.trade_proposer import propose_trade
+from src.trading.trade_proposer import define_trade_setup
 from src.bot_interface.formatters import format_elliott_wave_report, format_trade_alert
 
 BOT_NAME = "Elliott Wave Bot"
@@ -57,21 +57,54 @@ def _run_strategy_sync(strategy_func, symbol):
 async def _create_and_send_analysis_report(update: Update, context: ContextTypes.DEFAULT_TYPE, strategy_func, symbol: str, interval_str: str):
     """
     Runs the heavy analysis in a separate thread and sends the results when complete.
+    This now uses the full "smart entry" logic.
     """
     try:
-        # Run the blocking analysis in a thread
         scenarios, data_with_indicators = await asyncio.to_thread(_run_strategy_sync, strategy_func, symbol)
 
         if not scenarios:
             response_text = f"لم يتم العثور على أي أنماط موجية لـ **{symbol}** حالياً على فريم {interval_str}."
-        else:
-            wave_report = format_elliott_wave_report(symbol, interval_str, scenarios)
-            trade_signal = propose_trade(scenarios, interval_str, data_with_indicators)
-            if trade_signal:
-                trade_alert = format_trade_alert(trade_signal, interval_str, symbol, scenarios)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text, parse_mode='Markdown')
+            return
+
+        wave_report = format_elliott_wave_report(symbol, interval_str, scenarios)
+        trade_setup = define_trade_setup(scenarios, data_with_indicators)
+
+        if not trade_setup:
+            response_text = f"{wave_report}\n\n*لا توجد فرصة تداول واضحة بناءً على الأنماط الحالية.*"
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text, parse_mode='Markdown')
+            return
+
+        # Now, check if the setup is a confirmed trade right now
+        current_price_ltf = data_with_indicators['close'].iloc[-1]
+        entry_zone = trade_setup['entry_zone']
+        is_in_zone = entry_zone[1] <= current_price_ltf <= entry_zone[0]
+
+        if is_in_zone:
+            latest_indicators = data_with_indicators.iloc[-1]
+            stoch_k = latest_indicators.get('STOCHRSIk_14_14_3_3', 50)
+            stoch_d = latest_indicators.get('STOCHRSId_14_14_3_3', 50)
+            macd_hist = latest_indicators.get('MACDh_12_26_9', 0)
+            volume = latest_indicators.get('volume', 0)
+            volume_sma = latest_indicators.get('volume_sma', 0)
+
+            stoch_bullish = stoch_k > stoch_d and stoch_k < 60
+            macd_bullish = macd_hist > 0
+            volume_confirmed = volume > volume_sma * 1.2
+
+            if stoch_bullish and macd_bullish and volume_confirmed:
+                # This is a fully confirmed trade
+                trade_alert = format_trade_alert(trade_setup, interval_str, symbol, scenarios)
                 response_text = f"{wave_report}\n\n{trade_alert}"
             else:
-                response_text = f"{wave_report}\n\n*لا توجد فرصة تداول واضحة بناءً على الأنماط الحالية.*"
+                # It's a valid setup, but confirmation is missing
+                trade_alert = format_trade_alert(trade_setup, interval_str, symbol, scenarios)
+                response_text = f"{wave_report}\n\n{trade_alert}\n\n**الحالة:** السعر في منطقة الدخول، ولكننا ننتظر تأكيدًا أقوى من المؤشرات."
+        else:
+            # It's a valid setup, but price is not in the zone yet
+            trade_alert = format_trade_alert(trade_setup, interval_str, symbol, scenarios)
+            response_text = f"{wave_report}\n\n{trade_alert}\n\n**الحالة:** تم تحديد فرصة محتملة، ننتظر وصول السعر إلى منطقة الدخول."
+
     except Exception as e:
         response_text = f"حدث خطأ فادح أثناء تحليل {symbol}. يرجى مراجعة السجل."
         print(f"Error during manual analysis for {symbol} on {interval_str}:")
