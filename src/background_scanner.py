@@ -2,96 +2,56 @@ import asyncio
 import datetime
 import traceback
 from telegram.ext import Application
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List
 
 from src.utils.config_loader import config
-from src.data.bybit_client import BybitClient
-from src.analysis.support_resistance import find_supply_demand_zones
-from src.strategies.h4_strategy import h4_long_term_strategy
-from src.strategies.m15_strategy import m15_scalp_strategy
-from src.strategies.m5_strategy import m5_scalp_strategy
-from src.strategies.m3_strategy import m3_scalp_strategy
-from src.trading.trade_proposer import define_trade_setup
 from src.bot_interface.formatters import format_trade_alert
+from src.analysis_manager import AnalysisManager
 
-LOWER_TIMEFRAME_STRATEGIES = [
-    (m15_scalp_strategy, "15m"),
-    (m5_scalp_strategy, "5m"),
-    (m3_scalp_strategy, "3m"),
-]
+SCAN_INTERVAL_SECONDS = config.get('scanner', {}).get('interval_seconds', 900)
 
-SCAN_INTERVAL_SECONDS = 900
-
-def analyze_symbol_sync(symbol: str, client: BybitClient, last_alerted_pattern_time: Dict[str, Any]) -> list:
+def analyze_symbol_sync(symbol: str, last_alerted: Dict[str, Any]) -> list:
     """
-    Analyzes a single symbol and returns a list of alerts with priority.
-    Alert format: (alert_text, alert_type, priority)
-    Priority: Lower is better. Trades are prioritized by price proximity. Info alerts have low priority.
+    Uses the AnalysisManager to perform a full hierarchical analysis for a single symbol.
+    Returns a list of alerts to be sent.
     """
     alerts_to_send = []
-    print(f"--- Analyzing {symbol} ---")
+    manager = AnalysisManager(symbol)
+    manager.run_hierarchical_analysis()
 
-    htf_data = client.get_historical_data(symbol, "240")
-    if htf_data is None or htf_data.empty:
-        print(f"  - Could not fetch HTF data for {symbol}. Skipping.")
-        return alerts_to_send
+    decision = manager.context.get("final_decision")
+    trade_setup = manager.context.get("final_trade_setup")
 
-    htf_zones = find_supply_demand_zones(htf_data)
-    current_price = htf_data['close'].iloc[-1]
+    # Define a unique key for the potential trade to avoid spamming alerts
+    # Using the pattern type and the start/end prices is a good way to identify a setup
+    if trade_setup:
+        reason = trade_setup.get('reason', '')
+        alert_key = f"{symbol}-{trade_setup.get('pattern_type')}-{reason}"
+    else:
+        # If no trade setup, no alert can be generated
+        return []
 
-    is_near_htf_demand = any(
-        zone['type'] == 'demand' and (zone['bottom'] * 0.995 < current_price < zone['top'] * 1.005)
-        for zone in htf_zones
-    )
-    if not is_near_htf_demand:
-        return alerts_to_send
+    # Case 1: A trade is fully confirmed and ready to be sent
+    if decision == "ACCEPT":
+        if last_alerted.get(alert_key) != "ACCEPTED":
+            scenarios = manager.context.get("15m_scenarios", [])
+            alert_text = format_trade_alert(trade_setup, "15m", symbol, scenarios)
+            # Higher priority for accepted trades
+            alerts_to_send.append((alert_text, 'trade', 1))
+            last_alerted[alert_key] = "ACCEPTED"
 
-    print(f"  - Price near HTF demand. Scanning lower timeframes for entry patterns...")
-    for strategy_func, timeframe in LOWER_TIMEFRAME_STRATEGIES:
-        try:
-            scenarios, data_with_indicators = strategy_func(symbol, strict=True)
-            if not scenarios or data_with_indicators is None or data_with_indicators.empty:
-                continue
+    # Case 2: A valid setup was found, but it's not ready yet (e.g., price not in zone)
+    elif decision == "DEFER":
+        if last_alerted.get(alert_key) is None:
+            # This is a high-quality "potential opportunity"
+            info_text = (f"⏳ **فرصة محتملة للمراقبة | {symbol}**\n"
+                         f"**النمط:** `{trade_setup.get('pattern_type')}`\n"
+                         f"**السبب:** {trade_setup.get('reason')}\n"
+                         f"**الحالة:** {manager.context['decision_path'][-1]}") # Get the last reason for deferral
 
-            latest_primary_pattern = scenarios[0].primary_pattern
-            latest_pattern_timestamp = latest_primary_pattern.points[-1].time
-            alert_key = f"{symbol}-{timeframe}"
-
-            if last_alerted_pattern_time.get(alert_key) != latest_pattern_timestamp:
-                info_alert_text = f"⚠️ **فرصة محتملة | {symbol} | {timeframe}**\nنمط `{latest_primary_pattern.pattern_type}` عند منطقة طلب 4 ساعات."
-                alerts_to_send.append((info_alert_text, 'info', 999))
-                last_alerted_pattern_time[alert_key] = latest_pattern_timestamp
-
-                trade_setup = define_trade_setup(scenarios, data_with_indicators)
-
-                # This is the key fix: only proceed if the setup is a valid LONG trade, not just 'Analysis'
-                if trade_setup and trade_setup.get('type') == 'LONG':
-                    current_price_ltf = data_with_indicators['close'].iloc[-1]
-                    entry_zone = trade_setup['entry_zone']
-                    is_in_zone = entry_zone[1] <= current_price_ltf <= entry_zone[0]
-
-                    if is_in_zone:
-                        print(f"  - {symbol}/{timeframe}: Price {current_price_ltf:.2f} is in the Fib entry zone.")
-                        latest_indicators = data_with_indicators.iloc[-1]
-                        stoch_k = latest_indicators.get('STOCHRSIk_14_14_3_3', 50)
-                        stoch_d = latest_indicators.get('STOCHRSId_14_14_3_3', 50)
-                        macd_hist = latest_indicators.get('MACDh_12_26_9', 0)
-                        volume = latest_indicators.get('volume', 0)
-                        volume_sma = latest_indicators.get('volume_sma', 0)
-                        stoch_bullish = stoch_k > stoch_d and stoch_k < 60
-                        macd_bullish = macd_hist > 0
-                        volume_confirmed = volume > volume_sma * 1.2
-
-                        if stoch_bullish and macd_bullish and volume_confirmed:
-                            print(f"  - {symbol}/{timeframe}: CONFIRMED! Stoch, MACD, and Volume are bullish.")
-                            alert_text = format_trade_alert(trade_setup, timeframe, symbol, scenarios)
-                            priority = abs(current_price_ltf - trade_setup['entry']) / current_price_ltf
-                            alerts_to_send.append((alert_text, 'trade', priority))
-                        else:
-                            print(f"  - {symbol}/{timeframe}: In zone, but waiting for indicator confirmation.")
-        except Exception as e:
-            print(f"    - CRITICAL ERROR during LTF scan on {symbol}/{timeframe}: {e}")
-            traceback.print_exc()
+            # Lower priority for deferred trades
+            alerts_to_send.append((info_text, 'info', 10))
+            last_alerted[alert_key] = "DEFERRED"
 
     return alerts_to_send
 
@@ -102,8 +62,7 @@ async def run_scanner(app: Application):
     collects all alerts, sorts them, and sends a single consolidated message.
     """
     print("Background scanner started.")
-    last_alerted_pattern_time = {}
-    client = BybitClient()
+    last_alerted_setups: Dict[str, str] = {}
     symbols_to_scan = config['symbols_to_scan']
     print(f"Scanner will analyze the following symbols: {symbols_to_scan}")
 
@@ -112,43 +71,39 @@ async def run_scanner(app: Application):
             print(f"[{datetime.datetime.now()}] Running new automatic scan cycle...")
             user_id = app.bot_data.get('user_id')
             if not user_id:
-                await asyncio.sleep(5)
+                print("User ID not found in bot_data, skipping scan cycle.")
+                await asyncio.sleep(10)
                 continue
 
             all_alerts_for_cycle = []
             for symbol in symbols_to_scan:
                 alerts = await asyncio.to_thread(
-                    analyze_symbol_sync, symbol, client, last_alerted_pattern_time
+                    analyze_symbol_sync, symbol, last_alerted_setups
                 )
                 if alerts:
                     all_alerts_for_cycle.extend(alerts)
 
             if all_alerts_for_cycle:
-                # Sort alerts by priority (lower is better)
                 all_alerts_for_cycle.sort(key=lambda x: x[2])
 
-                # Separate into ready trades and potential opportunities
                 trade_alerts = [a[0] for a in all_alerts_for_cycle if a[1] == 'trade']
                 info_alerts = [a[0] for a in all_alerts_for_cycle if a[1] == 'info']
 
-                # Build the consolidated message
                 final_message = ""
                 if trade_alerts:
-                    final_message += "💎 **صفقات جاهزة للتنفيذ** 💎\n"
+                    final_message += "💎 **صفقات جاهزة (تحليل هرمي)** 💎\n\n"
                     final_message += "\n\n---\n\n".join(trade_alerts)
-                    final_message += "\n\n"
 
                 if info_alerts:
-                    final_message += "⏳ **فرص محتملة للمراقبة** ⏳\n"
+                    if final_message: final_message += "\n\n"
+                    final_message += "⏳ **فرص قيد المراقبة** ⏳\n\n"
                     final_message += "\n\n---\n\n".join(info_alerts)
 
                 if final_message:
                     await app.bot.send_message(chat_id=user_id, text=final_message, parse_mode='Markdown')
             else:
-                # Only send the "no opportunities" message if no alerts of any kind were found
-                await app.bot.send_message(chat_id=user_id, text="✅ اكتمل الفحص. لا توجد فرص جديدة.", disable_notification=True)
+                print("Scan cycle complete. No new setups found.")
 
-            print("Scan cycle complete.")
             await asyncio.sleep(SCAN_INTERVAL_SECONDS)
 
         except asyncio.CancelledError:
