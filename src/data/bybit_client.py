@@ -18,9 +18,9 @@ class BybitClient:
         self.session = HTTP(testnet=False)
         logging.info("BybitClient initialized.")
 
-    def get_historical_data(self, symbol: str, interval: Union[int, str], total_candles: int = 5000) -> Optional[pd.DataFrame]:
+    def get_historical_data(self, symbol: str, interval: Union[int, str], total_candles: int = 10000) -> Optional[pd.DataFrame]:
         """
-        Fetches and cleans historical k-line data.
+        Fetches and cleans historical k-line data. Now fetches a larger default number of candles.
         """
         try:
             all_data = []

@@ -4,12 +4,11 @@ from typing import List, Tuple
 import pandas as pd
 from src.data.bybit_client import BybitClient
 from src.elliott_wave_engine.engine import ElliottWaveEngine
-from src.analysis.wave_structure import WavePattern
+from src.analysis.wave_structure import WaveScenario
 
-def m3_scalp_strategy(symbol: str, strict: bool = True) -> Tuple[List[WavePattern], pd.DataFrame]:
+def m3_scalp_strategy(symbol: str, strict: bool = True) -> Tuple[List[WaveScenario], pd.DataFrame]:
     """
-    Fetches 3-minute data, runs Elliott Wave analysis, and returns the patterns
-    and the historical data with indicators.
+    Fetches 3-minute data, runs analysis, and returns the full scenarios.
     """
     try:
         client = BybitClient()

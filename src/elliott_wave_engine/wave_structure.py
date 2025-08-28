@@ -6,6 +6,7 @@ class WavePoint:
     time: any
     price: float
     type: str
+    idx: int # Add the candle index for time-based calculations
 
 @dataclass
 class WaveRuleResult:

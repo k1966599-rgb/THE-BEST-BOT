@@ -17,13 +17,13 @@ def generate_zigzag_waves(pivots: List[Dict[str, Any]]) -> Generator[WavePattern
             p[2]['type'] == 'H' and p[3]['type'] == 'L'):
             # Basic check: B wave (p2) must be lower than start of A (p0)
             if p[2]['price'] < p[0]['price']:
-                points = [WavePoint(x['time'], x['price'], x['type']) for x in p]
-                yield WavePattern(pattern_type="زجزاج هابط", points=points)
+                points = [WavePoint(x['time'], x['price'], x['type'], x['idx']) for x in p]
+                yield WavePattern(pattern_type="Bearish Zigzag", points=points)
 
         # Bullish Zigzag (correcting a downtrend) has a L-H-L-H pivot sequence
         elif (p[0]['type'] == 'L' and p[1]['type'] == 'H' and
               p[2]['type'] == 'L' and p[3]['type'] == 'H'):
             # Basic check: B wave (p2) must be higher than start of A (p0)
             if p[2]['price'] > p[0]['price']:
-                points = [WavePoint(x['time'], x['price'], x['type']) for x in p]
-                yield WavePattern(pattern_type="زجزاج صاعد", points=points)
+                points = [WavePoint(x['time'], x['price'], x['type'], x['idx']) for x in p]
+                yield WavePattern(pattern_type="Bullish Zigzag", points=points)
