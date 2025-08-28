@@ -23,6 +23,12 @@ class WavePattern:
     confidence_score: float = 0.0
     characterization: Optional[str] = None
 
+    def add_rule_result(self, result: WaveRuleResult):
+        self.rules_results.append(result)
+
+    def add_guideline_result(self, result: WaveRuleResult):
+        self.guidelines_results.append(result)
+
     def calculate_confidence(self):
         guideline_weights = {
             "Guideline: W3 Extension": 25, "Guideline: W2 Retrace": 15, "Guideline: W4 Retrace": 10,
