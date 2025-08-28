@@ -108,7 +108,8 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
                     f"**السبب:** {reason}\n"
                     f"**ملاحظة:** {details}")
 
-    entry_price = trade_signal['entry']
+    entry_price = trade_signal['entry'] # This is the specific 61.8% level
+    entry_zone = trade_signal.get('entry_zone') # This is the (top, bottom) tuple
     stop_loss_price = trade_signal['stop_loss']
     position_size = trade_signal.get('position_size')
 
@@ -117,6 +118,18 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
     # Use dynamic formatting for all prices in the alert
     entry_format = _get_dynamic_price_format(entry_price)
     sl_format = _get_dynamic_price_format(stop_loss_price)
+
+    entry_text = ""
+    if entry_zone:
+        zone_top_format = _get_dynamic_price_format(entry_zone[0])
+        zone_bottom_format = _get_dynamic_price_format(entry_zone[1])
+        entry_text = (
+            f"**منطقة الدخول (Fib 50-61.8%):** بين `${entry_zone[0]:{zone_top_format}}` و `${entry_zone[1]:{zone_bottom_format}}`\n"
+            f"**نقطة الدخول الحالية:** `${entry_price:{entry_format}}`\n"
+        )
+    else:
+        entry_text = f"**سعر الدخول المقترح:** ${entry_price:{entry_format}}\n"
+
 
     targets_text_lines = []
     for i, target_price in enumerate(trade_signal['targets']):
@@ -147,13 +160,11 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
         )
 
     alert_text = (
-        f"**🚨 تنبيه فرصة تداول جديدة! 🚨**\n\n"
-        f"**العملة:** {symbol}\n"
-        f"**الإطار الزمني:** {interval_str}\n"
-        f"**السبب:** {trade_signal['reason']}\n"
-        f"**نوع الصفقة:** {trade_signal['type']}\n\n"
-        f"**سعر الدخول المقترح:** ${entry_price:{entry_format}}\n"
-        f"**وقف الخسارة:** ${stop_loss_price:{sl_format}} (-{sl_percentage:.1f}%)\n"
+        f"💎 **صفقة جاهزة | {symbol} | {interval_str}** 💎\n\n"
+        f"**النمط:** `{trade_signal.get('pattern_type', 'N/A')}`\n"
+        f"**السبب:** {trade_signal['reason']}\n\n"
+        f"{entry_text}"
+        f"**وقف الخسارة:** `${stop_loss_price:{sl_format}}` (`-{sl_percentage:.1f}%`)\n"
         f"**الأهداف:**\n{targets_text}"
         f"{position_size_text}"
         f"{alternate_scenarios_text}"

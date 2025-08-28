@@ -4,7 +4,8 @@ from collections import defaultdict
 import pandas as pd
 
 from .wave_structure import WavePoint, WavePattern, ComplexWavePattern, WaveScenario
-from ..indicators.momentum import calculate_rsi, calculate_macd
+from ..indicators.momentum import calculate_rsi, calculate_macd, calculate_stoch_rsi
+from ..indicators.volume import calculate_volume_sma
 from scipy.signal import find_peaks
 
 # Import pattern logic from the new modular structure
@@ -29,9 +30,20 @@ class ElliottWaveEngine:
 
     def _prepare_data(self):
         self.data['rsi'] = calculate_rsi(self.data)
+
+        # Calculate MACD
         macd_df = calculate_macd(self.data)
         new_macd_cols = [col for col in macd_df.columns if col not in self.data.columns]
         self.data = self.data.join(macd_df[new_macd_cols])
+
+        # Calculate StochRSI
+        stoch_rsi_df = calculate_stoch_rsi(self.data)
+        new_stoch_cols = [col for col in stoch_rsi_df.columns if col not in self.data.columns]
+        self.data = self.data.join(stoch_rsi_df[new_stoch_cols])
+
+        # Calculate Volume SMA
+        self.data['volume_sma'] = calculate_volume_sma(self.data)
+
         self.data.ta.atr(append=True)
 
     def _find_pivots(self) -> List[Dict[str, Any]]:
