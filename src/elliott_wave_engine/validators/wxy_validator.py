@@ -11,7 +11,6 @@ def validate_wxy_wave(engine, pattern: ComplexWavePattern):
     """
     Validates a WXY complex correction.
     """
-    print(f"  - Validating WXY Candidate")
     if len(pattern.sub_patterns) != 2:
         return
 
