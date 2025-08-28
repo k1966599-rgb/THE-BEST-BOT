@@ -1,6 +1,7 @@
 import datetime
 import asyncio
 import json
+import traceback
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, Application
 
@@ -53,9 +54,12 @@ def _run_strategy_sync(strategy_func, symbol):
     """Synchronous wrapper for the blocking strategy call."""
     return strategy_func(symbol)
 
-async def _handle_and_send_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, strategy_func, symbol: str, interval_str: str):
-    """Runs analysis in a thread and sends the result as a new message."""
+async def _create_and_send_analysis_report(update: Update, context: ContextTypes.DEFAULT_TYPE, strategy_func, symbol: str, interval_str: str):
+    """
+    Runs the heavy analysis in a separate thread and sends the results when complete.
+    """
     try:
+        # Run the blocking analysis in a thread
         scenarios, data_with_indicators = await asyncio.to_thread(_run_strategy_sync, strategy_func, symbol)
 
         if not scenarios:
@@ -69,8 +73,8 @@ async def _handle_and_send_analysis(update: Update, context: ContextTypes.DEFAUL
             else:
                 response_text = f"{wave_report}\n\n*لا توجد فرصة تداول واضحة بناءً على الأنماط الحالية.*"
     except Exception as e:
-        response_text = f"حدث خطأ أثناء تحليل {symbol}: {e}"
-        print(f"Error during analysis for {symbol}: {e}")
+        response_text = f"حدث خطأ فادح أثناء تحليل {symbol}. يرجى مراجعة السجل."
+        print(f"Error during manual analysis for {symbol} on {interval_str}:")
         traceback.print_exc()
 
     await context.bot.send_message(chat_id=update.effective_chat.id, text=response_text, parse_mode='Markdown')
@@ -81,6 +85,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await query.answer()
     data = query.data
 
+    # --- Menu Navigation ---
     if data == 'main_menu':
         await start(update, context)
         return
@@ -92,23 +97,24 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await show_timeframe_menu(update, context, symbol)
         return
 
+    # --- Bot State Control ---
     if data == 'start_bot':
         if not context.bot_data.get('is_running', False):
             context.bot_data['is_running'] = True
             save_bot_state(True)
-            print("Scanner start requested. It will begin on the next cycle if not already running.")
+            print("Scanner start requested. It will begin on the next bot restart or cycle.")
         await start(update, context)
         return
     if data == 'stop_bot':
         if context.bot_data.get('is_running', False):
             context.bot_data['is_running'] = False
             save_bot_state(False)
-            print("Scanner stop requested. Please restart the bot to stop the scanner.")
+            print("Scanner stop requested. Please restart the bot to ensure the scanner is stopped.")
         await start(update, context)
         return
 
+    # --- Strategy Execution ---
     if data.startswith('run_strategy_'):
-        await query.edit_message_text(text="طلبك قيد المعالجة... سأرسل النتائج في رسالة جديدة عند اكتمالها.")
         try:
             parts = data.split('_')
             strategy_key, symbol = parts[2], parts[3]
@@ -116,17 +122,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
             if strategy_key in strategy_map:
                 strategy_func, interval_str = strategy_map[strategy_key]
-                asyncio.create_task(_handle_and_send_analysis(update, context, strategy_func, symbol, interval_str))
+                # Acknowledge immediately
+                await query.edit_message_text(text=f"طلبك لتحليل {symbol} على فريم {interval_str} قيد المعالجة... سأرسل النتائج في رسالة جديدة عند اكتمالها.")
+                # Schedule the heavy lifting to run in the background
+                asyncio.create_task(_create_and_send_analysis_report(update, context, strategy_func, symbol, interval_str))
             else:
-                await context.bot.send_message(chat_id=update.effective_chat.id, text="استراتيجية غير معروفة.")
+                await query.edit_message_text(text="استراتيجية غير معروفة.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
         except IndexError:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="خطأ في تحليل أمر الاستراتيجية.")
+            await query.edit_message_text(text="خطأ في تحليل أمر الاستراتيجية.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
         return
 
-    # Fallback for other buttons
+    # --- Placeholder Buttons ---
     response_map = {'active_trades': "📈 **الصفقات النشطة**\n\n(هذه الميزة قيد التطوير)", 'statistics': "📋 **الاحصائيات**\n\n(هذه الميزة قيد التطوير)"}
-    response_text = response_map.get(data, "أمر غير معروف.")
-    await query.edit_message_text(text=response_text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
+    if data in response_map:
+        await query.edit_message_text(text=response_map[data], parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
 
 # --- State Persistence ---
 STATE_FILE = ".bot_state.json"
