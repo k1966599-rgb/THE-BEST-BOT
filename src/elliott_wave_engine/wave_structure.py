@@ -6,7 +6,7 @@ class WavePoint:
     time: any
     price: float
     type: str
-    idx: int # Add the candle index for time-based calculations
+    idx: int
 
 @dataclass
 class WaveRuleResult:
@@ -33,12 +33,12 @@ class WavePattern:
         guideline_weights = {
             "Guideline: W3 Extension": 25, "Guideline: W2 Retrace": 15, "Guideline: W4 Retrace": 10,
             "Guideline: Momentum Divergence": 30, "Guideline: Volume Pattern": 20,
-            "Guideline: Alternation": 15, "Guideline: Fractal Validation": 40,
-            "Guideline: Corrective Fractal Validation": 35, "Guideline: Time Relationship": 10,
+            "Guideline: Alternation": 15, "Guideline: Time Similarity": 10
         }
         if not all(r.passed for r in self.rules_results):
             self.confidence_score = 0.0
             return
+
         # Base score for passing all rules is now higher
         score = 60.0
         total_possible_guideline_score = sum(guideline_weights.values())
