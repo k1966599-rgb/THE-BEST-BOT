@@ -6,76 +6,79 @@ from src.utils.config_loader import config
 def get_fib_retracement(start_price: float, end_price: float) -> Dict[float, float]:
     """Calculates Fibonacci retracement levels for a given price move."""
     height = end_price - start_price
+    if height == 0: return {}
     return {
         level: end_price - level * height
-        for level in [0.236, 0.382, 0.5, 0.618, 0.786]
+        for level in [0.382, 0.5, 0.618, 0.786]
     }
 
-def get_fib_extension(start_price: float, end_price: float, retracement_price: float) -> Dict[float, float]:
+def get_fib_extension(p_start: float, p_end: float, p_correction: float) -> Dict[float, float]:
     """Calculates Fibonacci extension levels."""
-    height = end_price - start_price
+    height = p_end - p_start
+    if height == 0: return {}
     return {
-        level: retracement_price + level * height
-        for level in [0.618, 1.0, 1.272, 1.618, 2.0, 2.618]
+        level: p_correction + level * height
+        for level in [1.0, 1.272, 1.618, 2.0, 2.618]
     }
 
 def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
-    Calculates trade parameters based on Fibonacci retracement for entry and extension for targets.
-    This function is wrapped in a try...except block to handle unexpected pattern structures gracefully.
+    Calculates trade parameters based on the type of Elliott Wave pattern.
+    - For Impulse waves (1-5), it anticipates a correction to enter.
+    - For Corrective waves (ABC, ABCDE), it enters after the correction is believed to be complete.
     """
     try:
-        if not pattern or len(pattern.points) < 4:
-            return None
+        pattern_type = pattern.pattern_type.lower()
+        points = pattern.points
 
-        # --- Identify the primary move to measure ---
-        if "impulse" in pattern.pattern_type.lower() and len(pattern.points) >= 6:
-            p_start = pattern.points[0]
-            p_end = pattern.points[5]
-            p_correction_end = p_end
-        elif "zigzag" in pattern.pattern_type.lower() and len(pattern.points) >= 4:
-            p_start = pattern.points[0]
-            p_end = pattern.points[1]
-            p_correction_end = pattern.points[3]
+        # --- Strategy 1: Enter on a correction AFTER a 5-wave Impulse ---
+        if "impulse" in pattern_type and len(points) >= 6:
+            p0, p1, p2, p3, p4, p5 = points
+
+            retracements = get_fib_retracement(p0.price, p5.price)
+            entry_zone_top = retracements.get(0.5)
+            entry_zone_bottom = retracements.get(0.618)
+            if entry_zone_top is None or entry_zone_bottom is None: return None
+
+            entry_price = entry_zone_bottom
+            stop_loss_price = p0.price # Invalidation is the start of the impulse
+
+            # Targets are extensions from the potential bottom of the correction (entry_price)
+            targets = get_fib_extension(p0.price, p5.price, entry_price)
+
+            reason = f"انتظار تصحيح للموجة الدافعة من {p0.price:.2f} إلى {p5.price:.2f}"
+
+        # --- Strategy 2: Enter AFTER a corrective pattern (Zigzag, Flat, Triangle) ---
+        elif any(corr in pattern_type for corr in ["zigzag", "flat", "triangle"]):
+            if len(points) < 4: return None # Need at least p0-A-B-C
+
+            p_correction_start = points[0]
+            if "triangle" in pattern_type and len(points) >= 6:
+                p_correction_end = points[5] # Point E
+                p_breakout_level = points[3] # Point D
+            else: # ABC patterns
+                p_correction_end = points[3] # Point C
+                p_breakout_level = points[2] # Point B
+
+            # Entry is a breakout above a key level of the correction
+            entry_price = p_breakout_level.price
+            stop_loss_price = p_correction_end.price # Invalidation is the low of the correction
+
+            # Targets are extensions from the end of the correction
+            targets = get_fib_extension(p_correction_start.price, p_breakout_level.price, p_correction_end.price)
+
+            reason = f"الدخول بعد انتهاء نمط تصحيحي من نوع {pattern.pattern_type}"
+
         else:
-            # Fallback for other simple patterns
-            p_start = pattern.points[-4]
-            p_end = pattern.points[-3]
-            p_correction_end = pattern.points[-1]
-
-        # --- 1. Calculate Retracement for Entry Zone ---
-        retracements = get_fib_retracement(p_start.price, p_end.price)
-        entry_zone_top = retracements.get(0.5)
-        entry_zone_bottom = retracements.get(0.618)
-
-        if entry_zone_top is None or entry_zone_bottom is None:
+            # Pattern type is not supported for trade calculation
             return None
 
-        entry_price = entry_zone_bottom
+        # --- Common final calculations ---
+        if stop_loss_price >= entry_price: return None
 
-        # --- 2. Define Stop-Loss ---
-        atr_col = next((col for col in historical_data.columns if 'atr' in col.lower()), None)
-        if not atr_col: return None
-        latest_atr = historical_data[atr_col].iloc[-1]
-        if pd.isna(latest_atr): return None
-
-        sl_base_price = p_correction_end.price
-        if "impulse" in pattern.pattern_type.lower():
-            sl_base_price = p_start.price
-
-        stop_loss_price = sl_base_price - (2 * latest_atr)
-
-        if stop_loss_price >= entry_price:
-            return None
-
-        # --- 3. Calculate Extension for Targets ---
-        extensions = get_fib_extension(p_start.price, p_end.price, entry_price)
-        targets = [price for level, price in extensions.items() if level >= 1.272]
-
-        # --- 4. Position Sizing (Optional) ---
+        # --- Position Sizing (Optional) ---
         account_size = config.get('risk', {}).get('account_size')
         risk_per_trade = config.get('risk', {}).get('risk_per_trade')
-
         position_size = None
         if account_size and risk_per_trade:
             dollar_risk = account_size * risk_per_trade
@@ -84,15 +87,14 @@ def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: 
                 position_size = dollar_risk / risk_per_asset
 
         return {
-            "entry_zone": (entry_zone_top, entry_zone_bottom),
+            "entry_zone": (entry_zone_top, entry_zone_bottom) if "impulse" in pattern_type else (entry_price, entry_price),
             "entry": entry_price,
             "stop_loss": stop_loss_price,
-            "targets": sorted(targets),
+            "targets": sorted(list(targets.values())),
             "position_size": position_size,
-            "reason": f"Fib Retracement from {p_start.price:.2f} to {p_end.price:.2f}"
+            "reason": reason
         }
-    except Exception as e:
-        # This is a broad exception handler to ensure the function never crashes the caller.
-        # It catches any unexpected error during parameter calculation (e.g., from weird data or pattern structures).
-        print(f"DEBUG: Could not calculate fib parameters for pattern {pattern.pattern_type} due to an unexpected error: {e}")
+
+    except (IndexError, KeyError, TypeError) as e:
+        print(f"DEBUG: Could not calculate fib parameters for pattern {pattern.pattern_type} due to structure error: {e}")
         return None
