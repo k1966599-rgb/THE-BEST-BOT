@@ -8,7 +8,7 @@ from src.elliott_wave_engine.core.wave_structure import WaveScenario
 
 def m3_scalp_strategy(symbol: str, strict: bool = True) -> Tuple[List[WaveScenario], pd.DataFrame]:
     """
-    Fetches 3-minute data, runs analysis, and returns the full scenarios.
+    Fetches 3-minute data, runs analysis, and returns the scenarios and the data with indicators.
     """
     try:
         client = BybitClient()
@@ -16,20 +16,15 @@ def m3_scalp_strategy(symbol: str, strict: bool = True) -> Tuple[List[WaveScenar
 
         if historical_data is None or historical_data.empty:
             print(f"Could not fetch historical data for {symbol} on 3m timeframe.")
-            return []
+            return [], pd.DataFrame()
 
         # Instantiate the engine and run the analysis
-        engine = ElliottWaveEngine(symbol, "3m", historical_data)
+        engine = ElliottWaveEngine(symbol, "3", historical_data)
         scenarios = engine.run_analysis(strict=strict)
 
-        if not scenarios:
-            return []
-
-        # Extract the primary pattern from each scenario and return it
-        patterns = [scenario.primary_pattern for scenario in scenarios]
-
-        return patterns
+        # Return the scenarios and the data used for analysis (which now includes indicators)
+        return scenarios, engine.data
     except Exception as e:
         print(f"An error occurred in M3 strategy for {symbol}: {e}")
         traceback.print_exc()
-        return [] # Return empty list on error to prevent hanging
+        return [], pd.DataFrame() # Return empty tuple on error
