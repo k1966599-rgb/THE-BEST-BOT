@@ -1,13 +1,15 @@
 import pandas as pd
 import traceback
-from typing import List
+from typing import List, Tuple
+import pandas as pd
 from src.data.bybit_client import BybitClient
 from src.elliott_wave_engine.engine import ElliottWaveEngine
-from src.analysis.wave_structure import BaseWavePattern
+from src.analysis.wave_structure import WavePattern
 
-def m15_scalp_strategy(symbol: str, strict: bool = True) -> List[BaseWavePattern]:
+def m15_scalp_strategy(symbol: str, strict: bool = True) -> Tuple[List[WavePattern], pd.DataFrame]:
     """
-    Fetches 15-minute data and runs the Elliott Wave analysis to find scalp patterns.
+    Fetches 15-minute data, runs Elliott Wave analysis, and returns the patterns
+    and the historical data with indicators.
     """
     try:
         client = BybitClient()

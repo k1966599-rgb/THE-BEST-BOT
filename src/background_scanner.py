@@ -3,7 +3,7 @@ import datetime
 import traceback
 from telegram.ext import Application
 
-from src.utils.config_loader import get_symbols_to_scan
+from src.utils.config_loader import config
 from src.data.bybit_client import BybitClient
 from src.analysis.support_resistance import find_supply_demand_zones
 from src.strategies.h4_strategy import h4_long_term_strategy
@@ -28,7 +28,7 @@ async def run_scanner(app: Application):
     print("Background scanner started.")
     last_alerted_pattern_time = {}
     client = BybitClient()
-    symbols_to_scan = get_symbols_to_scan()
+    symbols_to_scan = config['symbols_to_scan']
     print(f"Scanner will analyze the following symbols: {symbols_to_scan}")
 
     while True:
@@ -68,7 +68,8 @@ async def run_scanner(app: Application):
                 for strategy_func, timeframe in LOWER_TIMEFRAME_STRATEGIES:
                     # This logic remains the same as before
                     try:
-                        loose_patterns = strategy_func(symbol, strict=False)
+                        # Unpack the new return tuple (patterns, data)
+                        loose_patterns, _ = strategy_func(symbol, strict=False)
                         if loose_patterns:
                             latest_loose_pattern = loose_patterns[0]
                             latest_pattern_timestamp = latest_loose_pattern.points[-1].time
@@ -79,9 +80,11 @@ async def run_scanner(app: Application):
                                     initial_alert = f"⚠️ فرصة محتملة على {symbol} إطار {timeframe} (عند منطقة طلب 4 ساعات)"
                                     await app.bot.send_message(chat_id=user_id, text=initial_alert)
 
-                                strict_patterns = strategy_func(symbol, strict=True)
+                                # Rerun with strict=True to get clean patterns and the final data with indicators
+                                strict_patterns, data_with_indicators = strategy_func(symbol, strict=True)
                                 if strict_patterns:
-                                    trade_signal = propose_trade(strict_patterns, timeframe)
+                                    # Pass the data with indicators to the trade proposer
+                                    trade_signal = propose_trade(strict_patterns, timeframe, data_with_indicators)
                                     if trade_signal:
                                         alert_text = format_trade_alert(trade_signal, timeframe)
                                         await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')

@@ -1,8 +1,9 @@
+import pandas as pd
 from typing import List, Dict, Any, Optional
 from src.trading.risk_management import calculate_smart_sl_tp
-from src.analysis.wave_structure import BaseWavePattern
+from src.analysis.wave_structure import WavePattern
 
-def propose_trade(patterns: List[BaseWavePattern], timeframe: str) -> Optional[Dict[str, Any]]:
+def propose_trade(patterns: List[WavePattern], timeframe: str, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
     Analyzes the most likely wave pattern to propose a trade with SL/TP.
     """
@@ -24,7 +25,8 @@ def propose_trade(patterns: List[BaseWavePattern], timeframe: str) -> Optional[D
         return None
 
     # Only LONG trades will proceed past this point.
-    trade_params = calculate_smart_sl_tp(primary_pattern, timeframe)
+    # Pass the historical data down to the calculation function.
+    trade_params = calculate_smart_sl_tp(primary_pattern, timeframe, historical_data)
 
     if not trade_params:
         return None

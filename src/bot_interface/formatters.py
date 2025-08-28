@@ -54,12 +54,16 @@ def format_elliott_wave_report(symbol: str, interval_str: str, patterns: List[Ba
     return "\n".join(report_lines)
 
 
+from src.utils.config_loader import config
+
 def format_trade_alert(trade_signal: dict, interval_str: str) -> str:
     """
-    Formats a trade signal into a concise alert message.
+    Formats a trade signal into a concise alert message, including position size.
     """
     entry_price = trade_signal['entry']
     stop_loss_price = trade_signal['stop_loss']
+    position_size = trade_signal.get('position_size') # Use .get() for safety
+
     sl_percentage = abs((stop_loss_price - entry_price) / entry_price) * 100
 
     targets_text_lines = []
@@ -70,6 +74,23 @@ def format_trade_alert(trade_signal: dict, interval_str: str) -> str:
         )
     targets_text = "\n".join(targets_text_lines)
 
+    # --- Build Position Sizing Text ---
+    position_size_text = ""
+    if position_size:
+        # Extract symbol from the reason text, e.g., "Potential Bullish Impulse on BTCUSDT"
+        symbol = trade_signal['reason'].split(' ')[-2]
+        asset = symbol.replace("USDT", "") # e.g., BTC, ETH
+
+        account_size = config.get('risk', {}).get('account_size', 'N/A')
+        risk_percentage = config.get('risk', {}).get('risk_per_trade', 0) * 100
+
+        position_size_text = (
+            f"\n**إدارة المخاطر (بناءً على إعداداتك):**\n"
+            f"- حجم الحساب: ${account_size:,.2f}\n"
+            f"- نسبة المخاطرة: {risk_percentage:.1f}%\n"
+            f"- **حجم الصفقة المقترح:** {position_size:.4f} {asset}\n"
+        )
+
     alert_text = (
         f"**🚨 تنبيه فرصة تداول جديدة! 🚨**\n\n"
         f"**الإطار الزمني:** {interval_str}\n"
@@ -78,5 +99,6 @@ def format_trade_alert(trade_signal: dict, interval_str: str) -> str:
         f"**سعر الدخول المقترح:** ${entry_price:,.2f}\n"
         f"**وقف الخسارة:** ${stop_loss_price:,.2f} (-{sl_percentage:.1f}%)\n"
         f"**الأهداف:**\n{targets_text}"
+        f"{position_size_text}" # Append the position sizing text
     )
     return alert_text
