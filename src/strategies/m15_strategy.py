@@ -19,7 +19,7 @@ def m15_scalp_strategy(symbol: str, strict: bool = True) -> Tuple[List[WaveScena
             return [], pd.DataFrame()
 
         # Instantiate the engine and run the analysis
-        engine = ElliottWaveEngine(symbol, "15", historical_data)
+        engine = ElliottWaveEngine(symbol, "15m", historical_data)
         scenarios = engine.run_analysis(strict=strict)
 
         # Return the scenarios and the data used for analysis (which now includes indicators)

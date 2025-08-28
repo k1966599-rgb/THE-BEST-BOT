@@ -58,15 +58,10 @@ class ElliottWaveEngine:
         # Increased again based on user feedback that 5.0 was not enough for 4h.
         prominence_map = {
             '4h':  mean_atr * 8.0,
-            '240': mean_atr * 8.0,
             '1h':  mean_atr * 5.0,
-            '60':  mean_atr * 5.0,
             '15m': mean_atr * 2.5,
-            '15':  mean_atr * 2.5,
             '5m':  mean_atr * 2.0,
-            '5':   mean_atr * 2.0,
             '3m':  mean_atr * 1.5,
-            '3':   mean_atr * 1.5,
         }
         prominence = prominence_map.get(str(self.timeframe), mean_atr * 3.0) # Default prominence
         return find_pivots(self.data, prominence=prominence)
