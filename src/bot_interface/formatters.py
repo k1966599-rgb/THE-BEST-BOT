@@ -1,5 +1,22 @@
+import math
 from typing import List
 from src.elliott_wave_engine.core.wave_structure import WaveScenario, WavePattern
+from src.utils.config_loader import config
+
+def _get_dynamic_price_format(price: float) -> str:
+    """
+    Determines the number of decimal places to use for formatting based on the price.
+    Uses more precision for lower-priced assets.
+    """
+    if price <= 0: return ",.2f"
+    if price >= 100: return ",.2f" # e.g., 12345.67
+    if price >= 1: return ",.3f"   # e.g., 2.345
+
+    # For prices < 1, use log10 to find the first significant digit
+    num_zeros = math.floor(abs(math.log10(price)))
+    # Add 2-3 extra digits of precision
+    decimals = num_zeros + 3
+    return f",.{decimals}f"
 
 def _format_single_pattern(pattern: WavePattern) -> List[str]:
     """Formats a single wave pattern into a list of report lines."""
@@ -23,10 +40,9 @@ def _format_single_pattern(pattern: WavePattern) -> List[str]:
         if i + 1 >= len(pattern.points): break
         p_start, p_end = pattern.points[i], pattern.points[i+1]
 
-        # Dynamic precision for price formatting
-        price_format = ",.4f" if p_start.price < 1.0 else ",.2f"
+        # Use the new dynamic formatting function
+        price_format = _get_dynamic_price_format(p_start.price)
 
-        # Add date to the report
         start_date_str = p_start.time.strftime('%Y-%m-%d')
         end_date_str = p_end.time.strftime('%Y-%m-%d')
 
@@ -59,13 +75,11 @@ def format_elliott_wave_report(symbol: str, interval_str: str, scenarios: List[W
     if not scenarios:
         return f"**-- التحليل الموجي لـ {symbol} ({interval_str}) --**\n\nلم يتم العثور على أي أنماط موجية واضحة حالياً."
 
-    # The first scenario is the primary one
     primary_scenario = scenarios[0]
     report_lines = [f"**-- التحليل الأساسي لـ {symbol} ({interval_str}) --**"]
     report_lines.extend(_format_single_pattern(primary_scenario.primary_pattern))
 
-    # Add alternate scenarios
-    alternate_scenarios = scenarios[1:3] # Show up to 2 alternates
+    alternate_scenarios = scenarios[1:3]
     if alternate_scenarios:
         report_lines.append("\n\n**-- سيناريوهات بديلة --**")
         for i, scenario in enumerate(alternate_scenarios):
@@ -74,56 +88,50 @@ def format_elliott_wave_report(symbol: str, interval_str: str, scenarios: List[W
 
     return "\n".join(report_lines)
 
-
-from src.utils.config_loader import config
-
 def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scenarios: List[WaveScenario]) -> str:
     """
     Formats a trade signal or an analysis event into a concise alert message.
     """
-    # Handle analysis-only events (e.g., bearish patterns)
     if trade_signal.get('type') == "Analysis":
         pattern = trade_signal.get('pattern')
         details = trade_signal.get('details', 'تم رصد نمط هام.')
 
-        # If the full pattern is provided, format it
         if pattern:
             report_lines = [f"**-- تحليل سياق لـ {symbol} ({interval_str}) --**"]
             report_lines.extend(_format_single_pattern(pattern))
             report_lines.append(f"\n**ملاحظة:** {details}")
             return "\n".join(report_lines)
-        # Fallback for simple analysis messages
         else:
             reason = trade_signal.get('reason', 'تحليل سياق')
-            return (
-                f"**⚠️ تنبيه تحليلي ⚠️**\n\n"
-                f"**الإطار الزمني:** {interval_str}\n"
-                f"**السبب:** {reason}\n"
-                f"**ملاحظة:** {details}"
-            )
+            return (f"**⚠️ تنبيه تحليلي ⚠️**\n\n"
+                    f"**الإطار الزمني:** {interval_str}\n"
+                    f"**السبب:** {reason}\n"
+                    f"**ملاحظة:** {details}")
 
-    # Format a standard trade proposal
     entry_price = trade_signal['entry']
     stop_loss_price = trade_signal['stop_loss']
-    position_size = trade_signal.get('position_size') # Use .get() for safety
+    position_size = trade_signal.get('position_size')
 
     sl_percentage = abs((stop_loss_price - entry_price) / entry_price) * 100
+
+    # Use dynamic formatting for all prices in the alert
+    entry_format = _get_dynamic_price_format(entry_price)
+    sl_format = _get_dynamic_price_format(stop_loss_price)
 
     targets_text_lines = []
     for i, target_price in enumerate(trade_signal['targets']):
         tp_percentage = abs((target_price - entry_price) / entry_price) * 100
+        tp_format = _get_dynamic_price_format(target_price)
         targets_text_lines.append(
-            f"  - الهدف {i+1}: ${target_price:,.2f} (+{tp_percentage:.1f}%)"
+            f"  - الهدف {i+1}: ${target_price:{tp_format}} (+{tp_percentage:.1f}%)"
         )
     targets_text = "\n".join(targets_text_lines)
 
-    # --- Build Position Sizing Text ---
     position_size_text = ""
     if position_size:
-        asset = symbol.replace("USDT", "") # e.g., BTC, ETH
+        asset = symbol.replace("USDT", "")
         account_size = config.get('risk', {}).get('account_size', 'N/A')
         risk_percentage = config.get('risk', {}).get('risk_per_trade', 0) * 100
-
         position_size_text = (
             f"\n**إدارة المخاطر (بناءً على إعداداتك):**\n"
             f"- حجم الحساب: ${account_size:,.2f}\n"
@@ -131,11 +139,9 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
             f"- **حجم الصفقة المقترح:** {position_size:.4f} {asset}\n"
         )
 
-    # --- Build Alternate Scenarios Text ---
     alternate_scenarios_text = ""
-    alternate_scenarios = scenarios[1:2] # Show one alternate
-    if alternate_scenarios:
-        alt_pattern = alternate_scenarios[0].primary_pattern
+    if scenarios and len(scenarios) > 1:
+        alt_pattern = scenarios[1].primary_pattern
         alternate_scenarios_text = (
             f"\n\n**سيناريو بديل:** {alt_pattern.pattern_type} (ثقة: {alt_pattern.confidence_score:.1f}%)"
         )
@@ -146,8 +152,8 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
         f"**الإطار الزمني:** {interval_str}\n"
         f"**السبب:** {trade_signal['reason']}\n"
         f"**نوع الصفقة:** {trade_signal['type']}\n\n"
-        f"**سعر الدخول المقترح:** ${entry_price:,.2f}\n"
-        f"**وقف الخسارة:** ${stop_loss_price:,.2f} (-{sl_percentage:.1f}%)\n"
+        f"**سعر الدخول المقترح:** ${entry_price:{entry_format}}\n"
+        f"**وقف الخسارة:** ${stop_loss_price:{sl_format}} (-{sl_percentage:.1f}%)\n"
         f"**الأهداف:**\n{targets_text}"
         f"{position_size_text}"
         f"{alternate_scenarios_text}"

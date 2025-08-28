@@ -38,12 +38,20 @@ class ElliottWaveEngine:
         # This makes pivot detection adaptive to each asset's specific volatility.
         # A pivot is only considered significant if it's a multiple of the recent average range.
         if 'ATRr_14' not in self.data.columns or self.data['ATRr_14'].isnull().all():
-            # Fallback to old method if ATR is not available for some reason
             avg_price = self.data['close'].mean()
             prominence = avg_price * 0.01
+            logging.warning(f"ATR data not found for {self.symbol} on {self.timeframe}. Falling back to price-percent prominence.")
             return find_pivots(self.data, prominence=prominence)
 
         mean_atr = self.data['ATRr_14'].mean()
+
+        # CRITICAL: Ensure mean_atr is a sane, positive value before using it.
+        # A prominence of 0 or NaN will crash the underlying scipy function.
+        if not mean_atr or mean_atr <= 0 or pd.isna(mean_atr):
+            avg_price = self.data['close'].mean()
+            prominence = avg_price * 0.01
+            logging.warning(f"Invalid ATR value ({mean_atr}) for {self.symbol} on {self.timeframe}. Falling back to price-percent prominence.")
+            return find_pivots(self.data, prominence=prominence)
 
         # Multipliers for ATR. Higher values find more major pivots.
         prominence_map = {
