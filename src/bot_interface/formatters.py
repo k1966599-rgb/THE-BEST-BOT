@@ -23,8 +23,8 @@ def _format_single_pattern(pattern: WavePattern) -> List[str]:
     lines = [f"\n--- {pattern.pattern_type} ---"]
     lines.append(f"**الثقة:** {pattern.confidence_score:.1f}%")
 
-    header = f"`{'الموجة':<7}| {'نقطة البداية':<22} | {'نقطة النهاية':<22} | {'التغيير':<10}`"
-    separator = f"`-------+------------------------+------------------------+-----------`"
+    header = f"`{'الموجة':<7}| {'نقطة البداية':<18} | {'نقطة النهاية':<18} | {'التغيير':<10}`"
+    separator = f"`-------+--------------------+--------------------+-----------`"
     lines.append("\n" + header)
     lines.append(separator)
 
@@ -40,11 +40,11 @@ def _format_single_pattern(pattern: WavePattern) -> List[str]:
         if i + 1 >= len(pattern.points): break
         p_start, p_end = pattern.points[i], pattern.points[i+1]
 
-        # Use the new dynamic formatting function
         price_format = _get_dynamic_price_format(p_start.price)
 
-        start_date_str = p_start.time.strftime('%Y-%m-%d')
-        end_date_str = p_end.time.strftime('%Y-%m-%d')
+        # Format date as DD-Mon (e.g., 07-Apr)
+        start_date_str = p_start.time.strftime('%d-%b')
+        end_date_str = p_end.time.strftime('%d-%b')
 
         start_point_str = f"{start_date_str} ${p_start.price:{price_format}}"
         end_point_str = f"{end_date_str} ${p_end.price:{price_format}}"
@@ -52,7 +52,7 @@ def _format_single_pattern(pattern: WavePattern) -> List[str]:
         change = p_end.price - p_start.price
         change_pct = (change / p_start.price) * 100 if p_start.price != 0 else 0
         change_str = f"{change_pct:+.2f}%"
-        row = f"`{label:<7}| {start_point_str:<22} | {end_point_str:<22} | {change_str:<10}`"
+        row = f"`{label:<7}| {start_point_str:<18} | {end_point_str:<18} | {change_str:<10}`"
         lines.append(row)
 
     lines.append("\n**قواعد النمط:**")
