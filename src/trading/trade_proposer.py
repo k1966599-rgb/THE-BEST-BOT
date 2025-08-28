@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import List, Dict, Any, Optional
 from src.trading.risk_management import calculate_smart_sl_tp
-from src.analysis.wave_structure import WaveScenario
+from src.elliott_wave_engine.wave_structure import WaveScenario
 
 def propose_trade(scenarios: List[WaveScenario], timeframe: str, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
