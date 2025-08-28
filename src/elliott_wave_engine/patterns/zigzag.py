@@ -10,7 +10,7 @@ def zigzag_wave_b_retrace_rule(points: List[WavePoint]) -> WaveRuleResult:
     retrace_b = _get_wave_length(points[1], points[2])
     ratio = retrace_b / len_a if len_a > 0 else 0
     passed = ratio < 0.9 # Wave B in a zigzag is typically short
-    return WaveRuleResult("Guideline: Zigzag B Retracement", passed, f"Wave B retraced {ratio:.1%} of Wave A.")
+    return WaveRuleResult("إرشاد: تصحيح الموجة B لنمط الزجزاج", passed, f"Wave B retraced {ratio:.1%} of Wave A.")
 
 def validate_zigzag_wave(engine, pattern: WavePattern):
     if len(pattern.points) != 4: return
@@ -18,7 +18,7 @@ def validate_zigzag_wave(engine, pattern: WavePattern):
     is_bearish = pA.price < p0.price
 
     rule1_passed = (pB.price < p0.price) if is_bearish else (pB.price > p0.price)
-    result = WaveRuleResult("Rule: B not beyond A start", rule1_passed, f"B({pB.price:.2f}) vs A_start({p0.price:.2f})")
+    result = WaveRuleResult("قاعدة: B لا تتجاوز بداية A", rule1_passed, f"B({pB.price:.2f}) vs A_start({p0.price:.2f})")
     pattern.rules_results.append(result)
     if not result.passed:
         logging.debug(f"Zigzag pattern failed: {result.name} - {result.details}")

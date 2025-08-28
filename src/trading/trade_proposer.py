@@ -24,7 +24,7 @@ def propose_trade(scenarios: List[WaveScenario], timeframe: str, historical_data
         trade_params = calculate_smart_sl_tp(primary_pattern, timeframe, historical_data)
         if not trade_params:
             return None
-        trade_params['reason'] = f"Potential {primary_pattern.pattern_type} pattern."
+        trade_params['reason'] = f"نمط {primary_pattern.pattern_type} محتمل."
         trade_params['type'] = trade_type
         return trade_params
 
@@ -34,8 +34,8 @@ def propose_trade(scenarios: List[WaveScenario], timeframe: str, historical_data
         return {
             "type": "Analysis",
             "pattern": primary_pattern,
-            "reason": f"Bearish pattern ({primary_pattern.pattern_type}) detected.",
-            "details": "Short trading is disabled by user configuration."
+            "reason": f"تم رصد نمط هابط ({primary_pattern.pattern_type}).",
+            "details": "التداول على الهابط معطل في الإعدادات."
         }
     elif "zigzag" in pattern_type_lower:
         # For Bullish Zigzags, we can propose a trend-following trade.
@@ -44,21 +44,21 @@ def propose_trade(scenarios: List[WaveScenario], timeframe: str, historical_data
             trade_params = calculate_zigzag_trade(primary_pattern, timeframe, historical_data)
             if not trade_params:
                 return None
-            trade_params['reason'] = f"End of corrective {primary_pattern.pattern_type} pattern."
+            trade_params['reason'] = f"نهاية نمط تصحيحي من نوع {primary_pattern.pattern_type}."
             trade_params['type'] = trade_type
             return trade_params
         else: # For Bearish Zigzags, provide context only.
             return {
                 "type": "Analysis",
-                "reason": f"Corrective pattern ({primary_pattern.pattern_type}) may have completed.",
-                "details": "This could signal a potential resumption of the primary trend."
+                "reason": f"قد يكون النمط التصحيحي ({primary_pattern.pattern_type}) قد اكتمل.",
+                "details": "قد يشير هذا إلى استئناف محتمل للاتجاه الرئيسي."
             }
     elif "flat" in pattern_type_lower:
         # Flats are also corrective, but we will only analyze them for now.
         return {
             "type": "Analysis",
-            "reason": f"Corrective pattern ({primary_pattern.pattern_type}) may have completed.",
-            "details": "This could signal a potential resumption of the primary trend."
+            "reason": f"قد يكون النمط التصحيحي ({primary_pattern.pattern_type}) قد اكتمل.",
+            "details": "قد يشير هذا إلى استئناف محتمل للاتجاه الرئيسي."
         }
     else:
         # If the pattern is not one of the recognized types, ignore it.

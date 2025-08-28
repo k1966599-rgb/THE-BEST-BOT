@@ -10,13 +10,13 @@ def validate_wxy_wave(engine, pattern: ComplexWavePattern):
 
     w_valid = all(r.passed for r in pattern_w.rules_results)
     y_valid = all(r.passed for r in pattern_y.rules_results)
-    result1 = WaveRuleResult("Rule: Sub-patterns are valid", (w_valid and y_valid), f"W:{w_valid}, Y:{y_valid}")
+    result1 = WaveRuleResult("قاعدة: الأنماط الفرعية صالحة", (w_valid and y_valid), f"W:{w_valid}, Y:{y_valid}")
     pattern.rules_results.append(result1)
     if not result1.passed:
         logging.debug(f"WXY pattern failed: {result1.name} - {result1.details}")
         return
 
-    result2 = WaveRuleResult("Rule: X wave is valid", True, "Simplified validation")
+    result2 = WaveRuleResult("قاعدة: موجة X صالحة", True, "Simplified validation")
     pattern.rules_results.append(result2)
 
 def generate_wxy_waves(pivots, simple_patterns: List[WavePattern]) -> Generator[ComplexWavePattern, None, None]:

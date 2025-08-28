@@ -10,14 +10,14 @@ def validate_triangle_wave(engine, pattern: WavePattern):
     is_bearish_contraction = pD.price < pB.price and pC.price > pA.price
     converging = is_bullish_contraction or is_bearish_contraction
 
-    result1 = WaveRuleResult("Rule: Converging Trendlines", converging, f"A:{pA.price:.2f},B:{pB.price:.2f},C:{pC.price:.2f},D:{pD.price:.2f}")
+    result1 = WaveRuleResult("قاعدة: خطوط اتجاه متقاربة", converging, f"A:{pA.price:.2f},B:{pB.price:.2f},C:{pC.price:.2f},D:{pD.price:.2f}")
     pattern.rules_results.append(result1)
     if not result1.passed:
         logging.debug(f"Triangle pattern failed: {result1.name} - {result1.details}")
         return
 
     rule_e_vs_c = pE.price < pC.price if is_bullish_contraction else pE.price > pC.price
-    result2 = WaveRuleResult("Rule: E does not exceed C", rule_e_vs_c, f"P_E({pE.price:.2f}) vs P_C({pC.price:.2f})")
+    result2 = WaveRuleResult("قاعدة: E لا تتجاوز C", rule_e_vs_c, f"P_E({pE.price:.2f}) vs P_C({pC.price:.2f})")
     pattern.rules_results.append(result2)
     if not result2.passed:
         logging.debug(f"Triangle pattern failed: {result2.name} - {result2.details}")

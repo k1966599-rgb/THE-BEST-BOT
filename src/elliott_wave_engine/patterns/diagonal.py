@@ -9,12 +9,12 @@ def diagonal_wave_4_overlap_rule(points: List[WavePoint]) -> WaveRuleResult:
     p1, p4 = points[1], points[4]
     is_bullish = p1.price > points[0].price
     passed = (p4.price < p1.price) if is_bullish else (p4.price > p1.price)
-    return WaveRuleResult("Rule: Diagonal W4 Overlap W1", passed, f"W4 end({p4.price:.2f}) vs W1 end({p1.price:.2f})")
+    return WaveRuleResult("قاعدة: تداخل موجة 4 مع 1 في القطرية", passed, f"W4 end({p4.price:.2f}) vs W1 end({p1.price:.2f})")
 
 def diagonal_converging_rule(points: List[WavePoint]) -> WaveRuleResult:
     len1 = _get_wave_length(points[0], points[1]); len3 = _get_wave_length(points[2], points[3]); len5 = _get_wave_length(points[4], points[5])
     passed = len3 < len1 and len5 < len3
-    return WaveRuleResult("Guideline: Converging Shape", passed, f"W1:{len1:.2f}>W3:{len3:.2f}>W5:{len5:.2f}")
+    return WaveRuleResult("إرشاد: شكل متقارب", passed, f"W1:{len1:.2f}>W3:{len3:.2f}>W5:{len5:.2f}")
 
 def validate_diagonal_wave(engine, pattern: WavePattern):
     if len(pattern.points) != 6: return
