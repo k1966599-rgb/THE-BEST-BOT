@@ -1,38 +1,65 @@
-import yaml
-from typing import Dict, Any
 import os
+import yaml
+from dotenv import load_dotenv
 import logging
 
-def load_config() -> Dict[str, Any]:
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def load_config():
     """
-    Loads the configuration from config.yaml in the root directory.
+    Loads configuration from config.yaml and environment variables.
+    Environment variables are loaded from a .env file first.
+    Secrets must be loaded from environment variables, not the YAML file.
     """
-    config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config.yaml')
+    # Load .env file into environment variables
+    load_dotenv()
+    logging.info("Loaded environment variables from .env file.")
+
+    # Load base configuration from YAML file
     try:
-        with open(config_path, 'r') as f:
+        with open("config.yaml", "r") as f:
             config = yaml.safe_load(f)
-            if config:
-                logging.info("Configuration file loaded successfully.")
-                return config
-            else:
-                logging.warning("Configuration file is empty.")
-                return {}
+            logging.info("Loaded base configuration from config.yaml.")
     except FileNotFoundError:
-        logging.error(f"Configuration file not found at {config_path}. Please ensure it exists.")
-        return {}
+        logging.error("FATAL: config.yaml not found. Please ensure it exists.")
+        raise
     except yaml.YAMLError as e:
-        logging.error(f"Error parsing YAML configuration file: {e}")
-        return {}
+        logging.error(f"FATAL: Error parsing config.yaml: {e}")
+        raise
 
-# Load config once on startup to be used by other modules
+    # --- Securely load secrets from environment variables ---
+    telegram_token = os.getenv("TELEGRAM_TOKEN")
+    bybit_api_key = os.getenv("BYBIT_API_KEY")
+    bybit_api_secret = os.getenv("BYBIT_API_SECRET")
+
+    # Validate that the Telegram token is present
+    if not telegram_token:
+        # We check for the placeholder `null` to provide a better error message
+        if config.get('telegram', {}).get('token') is None:
+             logging.warning("TELEGRAM_TOKEN is not set in the environment. The bot may not be able to start.")
+        else:
+            # If it's not null, it means it's a hardcoded secret, which is a risk.
+            logging.warning("A hardcoded token was found in config.yaml. Please remove it and use the .env file.")
+            # We will use the hardcoded one for now but with a warning.
+            telegram_token = config['telegram']['token']
+
+    if not telegram_token:
+        raise ValueError("FATAL: Telegram token is not set. Please set TELEGRAM_TOKEN in your .env file.")
+
+    # Update the config dictionary with the secrets
+    config['telegram']['token'] = telegram_token
+
+    # Add a section for bybit if it doesn't exist
+    if 'bybit' not in config:
+        config['bybit'] = {}
+
+    config['bybit']['api_key'] = bybit_api_key
+    config['bybit']['api_secret'] = bybit_api_secret
+
+    logging.info("Configuration loaded successfully and securely.")
+    return config
+
+# Create a single, globally accessible config instance
+# This will be imported by other modules in the application
 config = load_config()
-
-def get_symbols_to_scan() -> list[str]:
-    """
-    Returns the list of symbols to scan from the config.
-    """
-    symbols = config.get('symbols_to_scan', [])
-    if not symbols or not isinstance(symbols, list):
-        logging.warning("'symbols_to_scan' not found or is not a list in config.yaml. Defaulting to BTCUSDT.")
-        return ['BTCUSDT']
-    return symbols

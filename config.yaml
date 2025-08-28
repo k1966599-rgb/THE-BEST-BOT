@@ -2,7 +2,8 @@
 
 # 0. Telegram Bot Credentials
 telegram:
-  token: "8470503540:AAFHfcupB1BY5ce4PzlImYhNk4cv3Ce-7rE"
+  # The token is now loaded from the .env file for security
+  token: null
   chat_id: "782008836"
 
 # 1. List of symbols for the automatic scanner to analyze
