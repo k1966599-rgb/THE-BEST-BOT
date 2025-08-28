@@ -10,7 +10,7 @@ def flat_wave_b_retrace_rule(points: List[WavePoint]) -> WaveRuleResult:
     retrace_b = _get_wave_length(points[1], points[2])
     ratio = retrace_b / len_a if len_a > 0 else 0
     passed = ratio >= 0.9
-    return WaveRuleResult("Rule: Flat B Retracement > 90%", passed, f"Wave B retraced {ratio:.1%} of Wave A.")
+    return WaveRuleResult("قاعدة: تصحيح B للنمط المسطح > 90%", passed, f"Wave B retraced {ratio:.1%} of Wave A.")
 
 def validate_flat_wave(engine, pattern: WavePattern):
     if len(pattern.points) != 4: return
@@ -26,7 +26,7 @@ def validate_flat_wave(engine, pattern: WavePattern):
     lenC = _get_wave_length(pB, pC)
     len_ratio_c_b = lenC / lenB if lenB > 0 else 0
     rule2_passed = len_ratio_c_b < 1.618
-    result2 = WaveRuleResult("Rule: Wave C Length", rule2_passed, f"Wave C length is {len_ratio_c_b:.2%} of Wave B.")
+    result2 = WaveRuleResult("قاعدة: طول الموجة C", rule2_passed, f"Wave C length is {len_ratio_c_b:.2%} of Wave B.")
     pattern.rules_results.append(result2)
     if not result2.passed:
         logging.debug(f"Flat pattern failed: {result2.name} - {result2.details}")

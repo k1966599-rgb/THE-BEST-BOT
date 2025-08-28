@@ -34,21 +34,31 @@ class ElliottWaveEngine:
         self.data.ta.atr(append=True)
 
     def _find_pivots(self) -> List[Dict[str, Any]]:
-        avg_price = self.data['close'].mean()
-        # Further increased sensitivity for lower timeframes to find more patterns.
+        # Use Average True Range (ATR) for prominence calculation.
+        # This makes pivot detection adaptive to each asset's specific volatility.
+        # A pivot is only considered significant if it's a multiple of the recent average range.
+        if 'ATRr_14' not in self.data.columns or self.data['ATRr_14'].isnull().all():
+            # Fallback to old method if ATR is not available for some reason
+            avg_price = self.data['close'].mean()
+            prominence = avg_price * 0.01
+            return find_pivots(self.data, prominence=prominence)
+
+        mean_atr = self.data['ATRr_14'].mean()
+
+        # Multipliers for ATR. Higher values find more major pivots.
         prominence_map = {
-            '4h':  avg_price * 0.005,   # 0.5%
-            '240': avg_price * 0.005,
-            '1h':  avg_price * 0.002,   # 0.2%
-            '60':  avg_price * 0.002,
-            '15m': avg_price * 0.0006,  # 0.06% (very sensitive)
-            '15':  avg_price * 0.0006,
-            '5m':  avg_price * 0.0004,  # 0.04% (hyper sensitive)
-            '5':   avg_price * 0.0004,
-            '3m':  avg_price * 0.0002,  # 0.02% (extremely sensitive)
-            '3':   avg_price * 0.0002,
+            '4h':  mean_atr * 5.0,
+            '240': mean_atr * 5.0,
+            '1h':  mean_atr * 3.0,
+            '60':  mean_atr * 3.0,
+            '15m': mean_atr * 1.5,
+            '15':  mean_atr * 1.5,
+            '5m':  mean_atr * 1.0,
+            '5':   mean_atr * 1.0,
+            '3m':  mean_atr * 0.75,
+            '3':   mean_atr * 0.75,
         }
-        prominence = prominence_map.get(str(self.timeframe), avg_price * 0.002)
+        prominence = prominence_map.get(str(self.timeframe), mean_atr * 2.0) # Default prominence
         return find_pivots(self.data, prominence=prominence)
 
     def run_analysis(self, strict: bool = True) -> List[WaveScenario]:
