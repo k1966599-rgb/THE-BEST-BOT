@@ -1,136 +1,99 @@
 import pandas as pd
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from src.elliott_wave_engine.core.wave_structure import WavePattern
 from src.utils.config_loader import config
 
-def calculate_position_size(account_size: float, risk_per_trade: float, entry_price: float, sl_price: float) -> Optional[float]:
-    """Calculates the position size in the asset."""
-    if (entry_price - sl_price) == 0:
-        return None
-
-    dollar_risk = account_size * risk_per_trade
-    risk_per_asset = entry_price - sl_price
-    position_size = dollar_risk / risk_per_asset
-    return position_size
-
-def calculate_smart_sl_tp(pattern: WavePattern, timeframe: str, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
-    """
-    Calculates smart entry, stop-loss (using ATR), take-profit levels, and position size
-    based on the key points of a wave pattern and risk parameters.
-    """
-    # We need a 5-wave impulse (6 points) to calculate SL/TP reliably.
-    if not pattern or len(pattern.points) < 6:
-        return None
-
-    # Assuming a bullish impulse (0-1-2-3-4-5) as bearish patterns are filtered out.
-    p0, p1, p2, p3, p4, p5 = pattern.points
-
-    # --- Refined Entry Logic ---
-    # Set entry at a slight pullback from the peak of wave 5 to ensure a better entry price.
-    pullback_amount = (p5.price - p4.price) * 0.236 # e.g., 23.6% pullback of wave 5's length
-    entry_price = p5.price - pullback_amount
-
-    # --- ATR-based Stop-Loss Logic ---
-    # Find the ATR column (e.g., 'ATRr_14')
-    atr_col = next((col for col in historical_data.columns if 'atr' in col.lower()), None)
-    if not atr_col:
-        print("ATR column not found in data. Cannot calculate ATR-based SL.")
-        return None
-
-    # Get the latest ATR value
-    latest_atr = historical_data[atr_col].iloc[-1]
-    if pd.isna(latest_atr):
-        print("Latest ATR value is NaN. Cannot calculate SL.")
-        return None
-
-    # Place stop-loss below wave 4 using a 2x ATR buffer.
-    stop_loss_price = p4.price - (2 * latest_atr)
-
-    # Basic validation: for a long trade, stop loss must be below entry.
-    if stop_loss_price >= entry_price:
-        return None
-
-    # --- Take-Profit Logic (using Fibonacci Extensions of the whole impulse) ---
-    # Calculate the total height of the impulse wave (P5 - P0)
-    impulse_height = p5.price - p0.price
-    if impulse_height <= 0:
-        return None # Should not happen in a valid bullish impulse
-
-    # --- Timeframe-Dependent Target Logic ---
-    if timeframe == '4h':
-        # Aggressive targets for long-term trades
-        tp_multipliers = [1.618, 2.0, 2.618]
-    elif timeframe == '1h':
-        # Medium targets for mid-term trades
-        tp_multipliers = [1.0, 1.618, 2.0]
-    else:
-        # Conservative targets for short-term/scalp trades (15m, 5m, 3m)
-        tp_multipliers = [0.618, 1.0, 1.618]
-
-    # Projecting from the top of the impulse wave (p5) is a standard method.
-    targets = [p5.price + (impulse_height * m) for m in tp_multipliers]
-
-    # --- Position Sizing ---
-    account_size = config.get('risk', {}).get('account_size')
-    risk_per_trade = config.get('risk', {}).get('risk_per_trade')
-
-    position_size = None
-    if account_size and risk_per_trade:
-        position_size = calculate_position_size(account_size, risk_per_trade, entry_price, stop_loss_price)
-
-    trade_params = {
-        "entry": entry_price,
-        "stop_loss": stop_loss_price,
-        "targets": targets,
-        "position_size": position_size
+def get_fib_retracement(start_price: float, end_price: float) -> Dict[float, float]:
+    """Calculates Fibonacci retracement levels for a given price move."""
+    height = end_price - start_price
+    return {
+        level: end_price - level * height
+        for level in [0.236, 0.382, 0.5, 0.618, 0.786]
     }
 
-    return trade_params
+def get_fib_extension(start_price: float, end_price: float, retracement_price: float) -> Dict[float, float]:
+    """Calculates Fibonacci extension levels."""
+    height = end_price - start_price
+    return {
+        level: retracement_price + level * height
+        for level in [0.618, 1.0, 1.272, 1.618, 2.0, 2.618]
+    }
 
-
-def calculate_zigzag_trade(pattern: WavePattern, timeframe: str, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
+def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
-    Calculates a trend-following trade setup after a Bullish Zigzag correction.
+    Calculates trade parameters based on Fibonacci retracement for entry and extension for targets.
+    This is the new, primary function for determining trade setups.
     """
-    if len(pattern.points) != 4:
+    if not pattern or len(pattern.points) < 4:  # Need at least a 3-point move (e.g., 0-A-B)
         return None
 
-    p0, pA, pB, pC = pattern.points
+    # --- Identify the primary move to measure ---
+    # For now, we assume a bullish impulse (0-1-2-3-4-5) or a bullish zigzag (0-A-B-C)
+    # The logic can be expanded for more pattern types.
+    if "impulse" in pattern.pattern_type.lower() and len(pattern.points) >= 6:
+        p_start = pattern.points[0]
+        p_end = pattern.points[5]
+        p_correction_end = pattern.points[5] # Placeholder, real correction is not yet formed
+    elif "zigzag" in pattern.pattern_type.lower():
+        p_start = pattern.points[0]
+        p_end = pattern.points[1] # The 'A' wave of the impulse that preceded the zigzag
+        p_correction_end = pattern.points[3] # The 'C' point of the zigzag
+    else:
+        # Fallback for other simple patterns, assuming the last 3 points form the move
+        p_start = pattern.points[-4] if len(pattern.points) >= 4 else pattern.points[0]
+        p_end = pattern.points[-3]
+        p_correction_end = pattern.points[-1]
 
-    # --- Entry Logic: Enter on break of Wave B ---
-    entry_price = pB.price
+    # --- 1. Calculate Retracement for Entry Zone ---
+    retracements = get_fib_retracement(p_start.price, p_end.price)
+    entry_zone_top = retracements.get(0.5)
+    entry_zone_bottom = retracements.get(0.618)
 
-    # --- Stop-Loss Logic: Place SL below the low of the correction (Wave C) ---
+    if entry_zone_top is None or entry_zone_bottom is None:
+        return None
+
+    # This is the "calm" logic: we define a zone and wait.
+    # The actual entry trigger will be handled by the proposer logic later.
+    # For now, we can use the 61.8 level as the proposed entry.
+    entry_price = entry_zone_bottom
+
+    # --- 2. Define Stop-Loss ---
     atr_col = next((col for col in historical_data.columns if 'atr' in col.lower()), None)
     if not atr_col: return None
     latest_atr = historical_data[atr_col].iloc[-1]
     if pd.isna(latest_atr): return None
 
-    stop_loss_price = pC.price - (2 * latest_atr)
+    # Place SL below the start of the impulse move or the low of the correction, with an ATR buffer.
+    stop_loss_price = p_correction_end.price - (2 * latest_atr)
+    # For an impulse, the true SL should be below p_start, but p_correction_end is safer after a correction
+    if "impulse" in pattern.pattern_type.lower():
+        stop_loss_price = p_start.price - (2* latest_atr)
+
 
     if stop_loss_price >= entry_price:
-        return None
+        return None # Invalid trade setup
 
-    # --- Take-Profit Logic ---
-    # Target 1: The start of the correction (a significant resistance level)
-    target1 = p0.price
-    # Target 2: Fibonacci projection
-    correction_height = p0.price - pC.price
-    target2 = entry_price + (correction_height * 1.618)
+    # --- 3. Calculate Extension for Targets ---
+    extensions = get_fib_extension(p_start.price, p_end.price, entry_price)
+    targets = [price for level, price in extensions.items() if level >= 1.272]
 
-    targets = [target1, target2]
-
-    # --- Position Sizing ---
+    # --- 4. Position Sizing (Optional) ---
     account_size = config.get('risk', {}).get('account_size')
     risk_per_trade = config.get('risk', {}).get('risk_per_trade')
 
     position_size = None
     if account_size and risk_per_trade:
-        position_size = calculate_position_size(account_size, risk_per_trade, entry_price, stop_loss_price)
+        # Calculate size based on the specific entry price
+        dollar_risk = account_size * risk_per_trade
+        risk_per_asset = entry_price - stop_loss_price
+        if risk_per_asset > 0:
+            position_size = dollar_risk / risk_per_asset
 
     return {
+        "entry_zone": (entry_zone_top, entry_zone_bottom),
         "entry": entry_price,
         "stop_loss": stop_loss_price,
-        "targets": targets,
-        "position_size": position_size
+        "targets": sorted(targets),
+        "position_size": position_size,
+        "reason": f"Fib Retracement from {p_start.price:.2f} to {p_end.price:.2f}"
     }

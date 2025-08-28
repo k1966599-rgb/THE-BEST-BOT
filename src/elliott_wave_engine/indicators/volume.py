@@ -1,5 +1,10 @@
 import pandas as pd
 from typing import Dict, Any
+import pandas_ta as ta
+
+def calculate_volume_sma(df: pd.DataFrame, length: int = 20) -> pd.Series:
+    if 'volume' not in df.columns: raise ValueError("Input DataFrame must contain a 'volume' column.")
+    return df.ta.sma(df['volume'], length=length)
 
 def analyze_wave_volume(df: pd.DataFrame, wave_points: Dict[str, Any]) -> Dict[str, Any]:
     if 'volume' not in df.columns:
