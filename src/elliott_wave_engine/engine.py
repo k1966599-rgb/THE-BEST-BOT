@@ -31,8 +31,13 @@ class ElliottWaveEngine:
         self.pivots = self._find_pivots()
 
     def _prepare_data(self):
+        # Calculate RSI and assign it
         self.data['rsi'] = calculate_rsi(self.data)
-        self.data = self.data.join(calculate_macd(self.data))
+
+        # Calculate MACD and join only the new columns to avoid overlap errors
+        macd_df = calculate_macd(self.data)
+        new_macd_cols = [col for col in macd_df.columns if col not in self.data.columns]
+        self.data = self.data.join(macd_df[new_macd_cols])
 
     def _find_pivots(self) -> List[Dict[str, Any]]:
         avg_price = self.data['close'].mean()

@@ -8,3 +8,4 @@ requests
 PyYAML
 setuptools
 pytest
+python-dotenv

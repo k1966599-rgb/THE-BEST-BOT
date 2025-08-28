@@ -1,7 +1,8 @@
 import datetime
 import asyncio
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, Application
 from src.background_scanner import run_scanner
 
 from src.strategies.h4_strategy import h4_long_term_strategy
@@ -50,39 +51,63 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             text=text, reply_markup=reply_markup, parse_mode='Markdown'
         )
 
-async def wave_analysis_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def show_symbol_selection_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Displays the wave analysis submenu with timeframe options.
+    Displays a menu to select a symbol for analysis.
     """
-    keyboard = [
-        [InlineKeyboardButton("بحث عن صفقة طويلة المدى (4h)", callback_data='run_strategy_h4')],
-        [InlineKeyboardButton("بحث عن صفقة مضاربة (15m)", callback_data='run_strategy_m15')],
-        [InlineKeyboardButton("بحث عن صفقة مضاربة (5m)", callback_data='run_strategy_m5')],
-        [InlineKeyboardButton("بحث عن صفقة مضاربة (3m)", callback_data='run_strategy_m3')],
-        [InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]
-    ]
+    # These could be dynamically fetched from config or a user's list
+    popular_symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"]
+
+    keyboard = []
+    # Create a 2-column layout for the buttons
+    for i in range(0, len(popular_symbols), 2):
+        row = [
+            InlineKeyboardButton(popular_symbols[i], callback_data=f'select_symbol_{popular_symbols[i]}'),
+        ]
+        if i + 1 < len(popular_symbols):
+             row.append(InlineKeyboardButton(popular_symbols[i+1], callback_data=f'select_symbol_{popular_symbols[i+1]}'))
+        keyboard.append(row)
+
+    keyboard.append([InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = "اختر الإطار الزمني للتحليل:"
+    text = "اختر العملة للتحليل:"
     await update.callback_query.edit_message_text(text=text, reply_markup=reply_markup)
 
 
-async def _handle_strategy_analysis(strategy_func, interval_str: str) -> str:
+async def show_timeframe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, symbol: str) -> None:
     """
-    Runs a strategy analysis and formats the response text.
+    Displays the wave analysis submenu with timeframe options for the selected symbol.
     """
-    patterns = await asyncio.to_thread(strategy_func, "BTCUSDT")
+    keyboard = [
+        [InlineKeyboardButton("بحث عن صفقة طويلة المدى (4h)", callback_data=f'run_strategy_h4_{symbol}')],
+        [InlineKeyboardButton("بحث عن صفقة مضاربة (15m)", callback_data=f'run_strategy_m15_{symbol}')],
+        [InlineKeyboardButton("بحث عن صفقة مضاربة (5m)", callback_data=f'run_strategy_m5_{symbol}')],
+        [InlineKeyboardButton("بحث عن صفقة مضاربة (3m)", callback_data=f'run_strategy_m3_{symbol}')],
+        [InlineKeyboardButton("رجوع (اختيار العملة) ⬅️", callback_data='wave_analysis_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    text = f"اختر الإطار الزمني لتحليل **{symbol}**:"
+    await update.callback_query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode='Markdown')
+
+
+async def _handle_strategy_analysis(strategy_func, symbol: str, interval_str: str) -> str:
+    """
+    Runs a strategy analysis for a given symbol and formats the response text.
+    """
+    patterns = await asyncio.to_thread(strategy_func, symbol)
 
     if not patterns:
-        return f"لم يتم العثور على أي أنماط موجية حالياً على فريم {interval_str}."
+        return f"لم يتم العثور على أي أنماط موجية لـ **{symbol}** حالياً على فريم {interval_str}."
 
     # Limit the report to the top 3 most confident patterns to avoid message length errors
     patterns_to_report = patterns[:3]
 
-    wave_report = format_elliott_wave_report("BTCUSDT", interval_str, patterns_to_report)
+    wave_report = format_elliott_wave_report(symbol, interval_str, patterns_to_report)
     trade_signal = propose_trade(patterns, interval_str)
 
     if not trade_signal:
-        return wave_report + "\n\n*لا توجد فرصة تداول واضحة بناءً على الأنماط الحالية.*"
+        return wave_report + "\n\n*لا توجد فرصة تداول واضحة لـ **{symbol}** بناءً على الأنماط الحالية.*"
 
     entry_price = trade_signal['entry']
     stop_loss_price = trade_signal['stop_loss']
@@ -121,12 +146,20 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if data == 'wave_analysis_menu':
-        await wave_analysis_menu(update, context)
+        await show_symbol_selection_menu(update, context)
+        return
+
+    # Handle symbol selection
+    if data.startswith('select_symbol_'):
+        symbol = data.split('_')[2]
+        context.user_data['selected_symbol'] = symbol
+        await show_timeframe_menu(update, context, symbol)
         return
 
     if data == 'start_bot':
         if not context.bot_data.get('is_running', False):
             context.bot_data['is_running'] = True
+            save_bot_state(True)
             # Start the background scanner task
             scanner_task = asyncio.create_task(run_scanner(context.application))
             context.bot_data['scanner_task'] = scanner_task
@@ -137,6 +170,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if data == 'stop_bot':
         if context.bot_data.get('is_running', False):
             context.bot_data['is_running'] = False
+            save_bot_state(False)
             # Cancel the background scanner task
             scanner_task = context.bot_data.get('scanner_task')
             if scanner_task and not scanner_task.done():
@@ -151,16 +185,28 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     response_text = ""
     reply_markup = [[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]
 
-    strategy_map = {
-        'run_strategy_h4': (h4_long_term_strategy, "4h"),
-        'run_strategy_m15': (m15_scalp_strategy, "15m"),
-        'run_strategy_m5': (m5_scalp_strategy, "5m"),
-        'run_strategy_m3': (m3_scalp_strategy, "3m"),
-    }
+    # Handle dynamic strategy execution
+    if data.startswith('run_strategy_'):
+        try:
+            parts = data.split('_')
+            strategy_key = parts[2]
+            symbol = parts[3]
 
-    if data in strategy_map:
-        strategy_func, interval_str = strategy_map[data]
-        response_text = await _handle_strategy_analysis(strategy_func, interval_str)
+            strategy_map = {
+                'h4': (h4_long_term_strategy, "4h"),
+                'm15': (m15_scalp_strategy, "15m"),
+                'm5': (m5_scalp_strategy, "5m"),
+                'm3': (m3_scalp_strategy, "3m"),
+            }
+
+            if strategy_key in strategy_map:
+                strategy_func, interval_str = strategy_map[strategy_key]
+                response_text = await _handle_strategy_analysis(strategy_func, symbol, interval_str)
+            else:
+                response_text = "استراتيجية غير معروفة."
+
+        except IndexError:
+            response_text = "خطأ في تحليل أمر الاستراتيجية. يرجى المحاولة مرة أخرى."
 
     elif data == 'active_trades':
         response_text = "📈 **الصفقات النشطة**\n\n(هذه الميزة قيد التطوير)"
@@ -195,3 +241,33 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 text="حدث خطأ أثناء معالجة طلبك.",
                 reply_markup=InlineKeyboardMarkup(reply_markup)
             )
+
+# --- State Persistence ---
+STATE_FILE = ".bot_state.json"
+
+def save_bot_state(is_running: bool):
+    """Saves the running state of the bot to a file."""
+    with open(STATE_FILE, "w") as f:
+        json.dump({"is_running": is_running}, f)
+    print(f"Bot state saved: is_running={is_running}")
+
+def load_bot_state() -> bool:
+    """Loads the running state of the bot from a file."""
+    try:
+        with open(STATE_FILE, "r") as f:
+            state = json.load(f)
+            is_running = state.get("is_running", False)
+            print(f"Bot state loaded: is_running={is_running}")
+            return is_running
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("No valid state file found. Defaulting to not running.")
+        return False
+
+def initialize_bot_state(application: Application):
+    """Checks the persisted state and starts the scanner if needed."""
+    is_running = load_bot_state()
+    application.bot_data['is_running'] = is_running
+    if is_running:
+        print("Bot was running previously. Restarting background scanner...")
+        scanner_task = asyncio.create_task(run_scanner(application))
+        application.bot_data['scanner_task'] = scanner_task
