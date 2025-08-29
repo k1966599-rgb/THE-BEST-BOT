@@ -102,3 +102,32 @@ def save_deferred_setups(setups: List[Dict[str, Any]]) -> bool:
     except (IOError, TypeError) as e:
         print(f"ERROR: Could not save deferred setups to {DEFERRED_SETUPS_FILE}: {e}")
         return False
+
+# --- Notification State Management ---
+
+NOTIFICATION_STATE_FILE = 'notification_state.json'
+
+def load_notification_state() -> Dict[str, str]:
+    """Loads the state of which notifications have been sent."""
+    import os
+    if not os.path.exists(NOTIFICATION_STATE_FILE):
+        return {}
+    try:
+        with open(NOTIFICATION_STATE_FILE, 'r') as f:
+            # handle empty file case
+            content = f.read()
+            if not content:
+                return {}
+            return json.loads(content)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+def save_notification_state(state: Dict[str, str]) -> bool:
+    """Saves the notification state to a file."""
+    try:
+        with open(NOTIFICATION_STATE_FILE, 'w') as f:
+            json.dump(state, f, indent=4)
+        return True
+    except (IOError, TypeError) as e:
+        print(f"ERROR: Could not save notification state to {NOTIFICATION_STATE_FILE}: {e}")
+        return False
