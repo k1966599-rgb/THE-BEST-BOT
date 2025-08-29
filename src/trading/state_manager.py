@@ -73,3 +73,32 @@ def update_trade(updated_trade: Dict[str, Any]) -> bool:
     if trade_found:
         return save_active_trades(active_trades)
     return False
+
+# --- Deferred Setups State Management ---
+
+DEFERRED_SETUPS_FILE = "deferred_setups.json"
+
+def load_deferred_setups() -> List[Dict[str, Any]]:
+    """
+    Loads the list of deferred trade setups from its state file.
+    """
+    try:
+        with open(DEFERRED_SETUPS_FILE, "r") as f:
+            setups = json.load(f)
+            if isinstance(setups, list):
+                return setups
+            return []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+def save_deferred_setups(setups: List[Dict[str, Any]]) -> bool:
+    """
+    Saves the list of deferred trade setups to its state file.
+    """
+    try:
+        with open(DEFERRED_SETUPS_FILE, "w") as f:
+            json.dump(setups, f, indent=4)
+        return True
+    except (IOError, TypeError) as e:
+        print(f"ERROR: Could not save deferred setups to {DEFERRED_SETUPS_FILE}: {e}")
+        return False

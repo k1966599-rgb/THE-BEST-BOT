@@ -12,26 +12,31 @@ from src.analysis_manager import AnalysisManager
 from src.trading import state_manager, trade_manager, trade_logger
 from src.data.bybit_client import BybitClient
 
+# --- Load constants from config ---
 SCAN_INTERVAL_SECONDS = config.get('scanner', {}).get('interval_seconds', 900)
-MAX_TRADES_PER_DAY = config.get('trading_rules', {}).get('max_trades_per_day', 3)
+TRADING_RULES = config.get('trading_rules', {})
+MAX_TRADES_PER_DAY = TRADING_RULES.get('max_trades_per_day', 3)
+MAX_OPPORTUNITY_AGE_HOURS = TRADING_RULES.get('max_opportunity_age_hours', 24)
+
 
 def find_new_setups_sync(symbol: str) -> List[Dict[str, Any]]:
     """Uses the AnalysisManager to perform a full hierarchical analysis for a single symbol."""
     manager = AnalysisManager(symbol)
     manager.run_hierarchical_analysis()
     if manager.context.get("final_decision") in ["ACCEPT", "DEFER"]:
+        # Add a timestamp to the context when it's first found
+        manager.context['first_seen_timestamp'] = datetime.datetime.now().isoformat()
         return [manager.context]
     return []
 
 async def handle_trade_update(app: Application, user_id: int, event: Dict[str, Any], trade: Dict[str, Any]):
     """Handles events from the trade manager, sends alerts, updates state, and logs completed trades."""
-    # ... (This function remains the same as the previous version)
+    # This function remains the same
     event_type = event.get('event')
     symbol = event.get('symbol')
     trade_id = trade.get('id')
     message_id = trade.get('telegram_message_id')
     alert_text = ""
-
     if event_type == 'TP1_HIT':
         alert_text = (f"✅ **الهدف الأول تحقق | {symbol}** ✅\n"
                       f"**الإجراء الموصى به:** نقل وقف الخسارة إلى نقطة الدخول لتأمين الصفقة.")
@@ -57,10 +62,8 @@ async def handle_trade_update(app: Application, user_id: int, event: Dict[str, A
         trade['status'] = 'CLOSED_SL'
         trade_logger.log_trade(trade, 'SL_HIT')
         state_manager.remove_trade(trade_id)
-
     if alert_text:
         await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
-
     if message_id and not trade.get('status', '').startswith('CLOSED'):
         try:
             updated_alert_text = format_trade_alert(trade, "15m", symbol, [])
@@ -69,7 +72,8 @@ async def handle_trade_update(app: Application, user_id: int, event: Dict[str, A
             print(f"Could not edit message {message_id} for trade {trade_id}: {e}")
 
 async def monitor_active_trades(app: Application, user_id: int):
-    """Loads active trades, checks their status using the trade_manager, and handles updates."""
+    """Loads active trades, checks their status, and handles updates."""
+    # This function remains the same
     active_trades = state_manager.load_active_trades()
     if not active_trades: return
     print(f"--- Monitoring {len(active_trades)} active trade(s) ---")
@@ -88,20 +92,33 @@ async def monitor_active_trades(app: Application, user_id: int):
             await handle_trade_update(app, user_id, update_event, trade)
 
 def get_today_trade_count() -> int:
-    """Counts how many trades were logged today."""
-    if not os.path.exists(trade_logger.LOG_FILE):
-        return 0
+    """Counts how many trades were sent today."""
+    # To be accurate, this should count trades logged with 'SENT' outcome.
+    if not os.path.exists(trade_logger.LOG_FILE): return 0
     try:
         df = pd.read_csv(trade_logger.LOG_FILE)
         df['log_timestamp'] = pd.to_datetime(df['log_timestamp'])
-        today_trades = df[df['log_timestamp'].dt.date == datetime.date.today()]
-        return len(today_trades)
+        today_sent_trades = df[(df['log_timestamp'].dt.date == datetime.date.today()) & (df['outcome'] == 'SENT')]
+        return len(today_sent_trades)
     except Exception as e:
         print(f"Error reading trade history: {e}")
         return 0
 
+def cleanup_expired_deferred_setups():
+    """Loads deferred setups and removes any that are older than the configured max age."""
+    now = datetime.datetime.now()
+    setups_to_keep = []
+    for setup_obj in state_manager.load_deferred_setups():
+        first_seen = datetime.datetime.fromisoformat(setup_obj['first_seen_timestamp'])
+        age_hours = (now - first_seen).total_seconds() / 3600
+        if age_hours < MAX_OPPORTUNITY_AGE_HOURS:
+            setups_to_keep.append(setup_obj)
+        else:
+            print(f"INFO: Expired deferred setup for {setup_obj['setup']['symbol']} removed.")
+    state_manager.save_deferred_setups(setups_to_keep)
+
 async def run_scanner(app: Application):
-    """The main background task that finds new trades and monitors active ones."""
+    """The main background task."""
     print("Background scanner started.")
     symbols_to_scan = config['symbols_to_scan']
     print(f"Scanner will analyze the following symbols: {symbols_to_scan}")
@@ -111,16 +128,18 @@ async def run_scanner(app: Application):
             print(f"\n[{datetime.datetime.now()}] --- Running new scan cycle ---")
             user_id = app.bot_data.get('user_id')
             if not user_id:
-                print("User ID not found, skipping scan cycle.")
+                print("User ID not found, skipping.")
                 await asyncio.sleep(10)
                 continue
 
-            # --- Check Daily Trade Limit ---
+            # --- Part 1: Cleanup Expired Opportunities ---
+            cleanup_expired_deferred_setups()
+
+            # --- Part 2: Find New Trade Setups ---
             todays_trades = get_today_trade_count()
             if todays_trades >= MAX_TRADES_PER_DAY:
                 print(f"Daily trade limit of {MAX_TRADES_PER_DAY} reached. Skipping new trade search.")
             else:
-                # --- Part 1: Find New Trade Setups ---
                 all_found_setups = []
                 for symbol in symbols_to_scan:
                     setups = await asyncio.to_thread(find_new_setups_sync, symbol)
@@ -128,37 +147,42 @@ async def run_scanner(app: Application):
                         all_found_setups.extend(setups)
 
                 if all_found_setups:
+                    deferred_setups = state_manager.load_deferred_setups()
+                    deferred_keys = {f"{s['setup']['symbol']}-{s['setup']['pattern_type']}-{s['setup']['reason']}" for s in deferred_setups}
                     info_alerts_text = []
-                    for context in all_found_setups:
-                        if context.get("final_decision") == "ACCEPT":
-                            if get_today_trade_count() < MAX_TRADES_PER_DAY:
-                                trade_setup = context.get("final_trade_setup")
-                                symbol = context.get("symbol")
-                                scenarios = context.get("15m_scenarios", [])
-                                alert_text = format_trade_alert(trade_setup, "15m", symbol, scenarios)
-                                sent_message = await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
 
-                                trade_setup['telegram_message_id'] = sent_message.message_id
-                                trade_setup['status'] = 'ACTIVE'
-                                state_manager.add_trade(trade_setup)
-                                print(f"SUCCESS: Saved new active trade for {symbol} with ID {trade_setup['id']}")
-                                trade_logger.log_trade(trade_setup, 'SENT') # Log sent trades
-                            else:
-                                print(f"Skipping new trade for {context.get('symbol')} due to daily limit.")
-                        elif context.get("final_decision") == "DEFER":
-                            trade_setup = context.get("final_trade_setup")
-                            info_text = (f"⏳ **فرصة قيد المراقبة | {context.get('symbol')}**\n"
-                                         f"**النمط:** `{trade_setup.get('pattern_type')}`\n"
-                                         f"**الحالة:** {context['decision_path'][-1]}")
-                            info_alerts_text.append(info_text)
+                    for context in all_found_setups:
+                        trade_setup = context.get("final_trade_setup")
+                        decision = context.get("final_decision")
+
+                        if decision == "ACCEPT" and get_today_trade_count() < MAX_TRADES_PER_DAY:
+                            # Send and save accepted trade
+                            symbol = context.get("symbol")
+                            alert_text = format_trade_alert(trade_setup, "multi-tf", symbol, [])
+                            sent_message = await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
+                            trade_setup['telegram_message_id'] = sent_message.message_id
+                            trade_setup['status'] = 'ACTIVE'
+                            state_manager.add_trade(trade_setup)
+                            trade_logger.log_trade(trade_setup, 'SENT')
+                            print(f"SUCCESS: Saved new active trade for {symbol}")
+
+                        elif decision == "DEFER":
+                            # Save new deferred setups and prepare info alert
+                            setup_key = f"{trade_setup['symbol']}-{trade_setup['pattern_type']}-{trade_setup['reason']}"
+                            if setup_key not in deferred_keys:
+                                state_manager.save_deferred_setups(deferred_setups + [context])
+                                info_text = (f"⏳ **فرصة قيد المراقبة | {trade_setup.get('symbol')}**\n"
+                                             f"**النمط:** `{trade_setup.get('pattern_type')}`\n"
+                                             f"**الحالة:** {context['decision_path'][-1]}")
+                                info_alerts_text.append(info_text)
 
                     if info_alerts_text:
-                        final_info_message = "⏳ **فرص قيد المراقبة** ⏳\n\n" + "\n\n---\n\n".join(info_alerts_text)
+                        final_info_message = "⏳ **فرص جديدة للمراقبة** ⏳\n\n" + "\n\n---\n\n".join(info_alerts_text)
                         await app.bot.send_message(chat_id=user_id, text=final_info_message, parse_mode='Markdown')
                 else:
                     print("New setup search complete. No setups found.")
 
-            # --- Part 2: Monitor Existing Active Trades ---
+            # --- Part 3: Monitor Existing Active Trades ---
             await monitor_active_trades(app, user_id)
 
             print(f"--- Scan cycle complete. Waiting {SCAN_INTERVAL_SECONDS} seconds. ---")
