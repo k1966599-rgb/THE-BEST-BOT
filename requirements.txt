@@ -8,4 +8,5 @@ requests
 PyYAML
 setuptools
 pytest
+pytest-asyncio
 python-dotenv

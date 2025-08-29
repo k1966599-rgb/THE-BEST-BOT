@@ -41,16 +41,26 @@ class AnalysisManager:
         ltf_type = scenarios[0].primary_pattern.pattern_type.lower()
         self.context['decision_path'].append(f"->OK:{ltf_type[:5]}")
 
+        # New explicit stage marker
+        self.context['decision_path'].append(f"STAGE_PASSED:{tf_str}")
+
         if htf_context:
             htf_type = htf_context['scenarios'][0].primary_pattern.pattern_type.lower()
+            match_found = False
             if "impulse" in htf_type and any(c in ltf_type for c in ["zigzag", "flat", "triangle"]):
                 self.context['decision_path'].append("->MATCH:HTF_Imp/LTF_Corr")
-                return True
+                match_found = True
             elif any(c in htf_type for c in ["zigzag", "flat", "triangle"]) and "impulse" in ltf_type:
                 self.context['decision_path'].append("->MATCH:HTF_Corr/LTF_Imp")
+                match_found = True
+
+            if match_found:
+                # New explicit stage marker for alignment
+                self.context['decision_path'].append(f"STAGE_PASSED:ALIGN_{tf_str}")
                 return True
-            self.context['decision_path'].append("->REJECT:NoAlign")
-            return False
+            else:
+                self.context['decision_path'].append("->REJECT:NoAlign")
+                return False
         return True
 
     def _generate_trade_setup(self) -> bool:
@@ -66,6 +76,7 @@ class AnalysisManager:
 
         self.context['final_trade_setup'] = trade_setup
         self.context['decision_path'].append("->OK:SetupGenerated")
+        self.context['decision_path'].append("STAGE_PASSED:SETUP_GENERATED")
         return True
 
     def _confirm_entry_conditions(self) -> None:

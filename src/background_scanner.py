@@ -10,6 +10,7 @@ from src.utils.config_loader import config
 from src.bot_interface.formatters import format_trade_alert
 from src.analysis_manager import AnalysisManager
 from src.trading import state_manager, trade_manager, trade_logger
+from src.trading.state_manager import load_notification_state, save_notification_state
 from src.data.bybit_client import BybitClient
 
 # --- Load constants from config ---
@@ -28,6 +29,56 @@ def find_new_setups_sync(symbol: str) -> List[Dict[str, Any]]:
         manager.context['first_seen_timestamp'] = datetime.datetime.now().isoformat()
         return [manager.context]
     return []
+
+async def handle_analysis_notifications(app: Application, user_id: int, context: Dict[str, Any]):
+    """
+    Analyzes the decision path of a setup and sends granular, step-by-step notifications.
+    This function will be responsible for the "chatty bot" feature.
+    """
+    # Logic to be implemented in the next step:
+    # 1. Check the latest notified stage for this symbol's opportunity from state.
+    # 2. Parse the context['decision_path'] to find the current, most advanced stage.
+    # 3. If the current stage is newer than the notified stage:
+    decision_path = context.get('decision_path', [])
+    symbol = context.get('symbol')
+
+    # Define the stages and their corresponding messages
+    stage_messages = {
+        "STAGE_PASSED:4h": f"📈 **فرصة محتملة | {symbol} | 4H**\nتم رصد نمط مبدئي على فريم الأربع ساعات. جاري البحث عن تأكيد...",
+        "STAGE_PASSED:ALIGN_1h": f"✅ **تأكيد مبدئي | {symbol} | 1H**\nتم العثور على توافق مع فريم الساعة. جاري تحليل فريم 15 دقيقة...",
+        "STAGE_PASSED:ALIGN_15m": f"✅ **تأكيد متقدم | {symbol} | 15M**\nتم العثور على توافق مع فريم 15 دقيقة. جاري فحص شروط الدخول...",
+        "STAGE_PASSED:SETUP_GENERATED": f"⏳ **تجهيز الصفقة | {symbol}**\nتم تحديد معلمات الصفقة بنجاح. في انتظار إشارة الدخول النهائية..."
+    }
+
+    latest_stage = None
+    # Iterate in reverse to find the most recent significant stage
+    for stage in reversed(decision_path):
+        if stage in stage_messages:
+            latest_stage = stage
+            break
+
+    if latest_stage:
+        # Define a unique key for this specific opportunity
+        # A good key combines symbol and the start time of the primary pattern
+        try:
+            start_time = context['4h_scenarios'][0].start_point.time
+            opportunity_key = f"{symbol}_{start_time}"
+        except (KeyError, IndexError):
+            opportunity_key = f"{symbol}_unknown" # Fallback key
+
+        notification_state = load_notification_state()
+        last_notified_stage = notification_state.get(opportunity_key)
+
+        if latest_stage != last_notified_stage:
+            message = stage_messages[latest_stage]
+            try:
+                await app.bot.send_message(chat_id=user_id, text=message, parse_mode='Markdown')
+                # If message is sent successfully, update the state
+                notification_state[opportunity_key] = latest_stage
+                save_notification_state(notification_state)
+            except Exception as e:
+                print(f"Error sending analysis notification for {symbol}: {e}")
+
 
 async def handle_trade_update(app: Application, user_id: int, event: Dict[str, Any], trade: Dict[str, Any]):
     """Handles events from the trade manager, sends alerts, updates state, and logs completed trades."""
@@ -175,6 +226,10 @@ async def run_scanner(app: Application):
                                              f"**النمط:** `{trade_setup.get('pattern_type')}`\n"
                                              f"**الحالة:** {context['decision_path'][-1]}")
                                 info_alerts_text.append(info_text)
+
+                        else:
+                            # This is a REJECTED setup, but we might want to notify about its progress
+                            await handle_analysis_notifications(app, user_id, context)
 
                     if info_alerts_text:
                         final_info_message = "⏳ **فرص جديدة للمراقبة** ⏳\n\n" + "\n\n---\n\n".join(info_alerts_text)
