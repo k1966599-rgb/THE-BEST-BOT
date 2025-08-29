@@ -17,7 +17,8 @@ def define_trade_setup(scenarios: List[WaveScenario], historical_data: pd.DataFr
 
     # --- Main Logic: Check for Bullish Patterns to Define a Setup ---
     # As per user request, we are only defining setups for spot (long trades).
-    if "bullish" in pattern_type_lower or "up" in pattern_type_lower:
+    # As per user request, we are only defining setups for spot (long trades).
+    if "bullish" in pattern_type_lower or "up" in pattern_type_lower or "impulse" in pattern_type_lower:
 
         # All the complex calculation is now in one place.
         trade_setup = calculate_fibonacci_trade_parameters(primary_pattern, historical_data)
