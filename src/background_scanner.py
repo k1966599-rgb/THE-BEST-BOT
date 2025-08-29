@@ -4,7 +4,7 @@ import traceback
 import pandas as pd
 import os
 from telegram.ext import Application
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from src.utils.config_loader import config
 from src.bot_interface.formatters import format_trade_alert
@@ -18,6 +18,17 @@ SCAN_INTERVAL_SECONDS = config.get('scanner', {}).get('interval_seconds', 900)
 TRADING_RULES = config.get('trading_rules', {})
 MAX_TRADES_PER_DAY = TRADING_RULES.get('max_trades_per_day', 3)
 MAX_OPPORTUNITY_AGE_HOURS = TRADING_RULES.get('max_opportunity_age_hours', 24)
+
+
+# --- Scoring for aggregated notifications ---
+COMPLETENESS_SCORES = {
+    "ACCEPT": 100,
+    "STAGE_PASSED:SETUP_GENERATED": 90,
+    "DEFER": 80,
+    "STAGE_PASSED:ALIGN_15m": 70,
+    "STAGE_PASSED:ALIGN_1h": 60,
+    "STAGE_PASSED:4h": 50,
+}
 
 
 def find_new_setups_sync(symbol: str) -> List[Dict[str, Any]]:
@@ -36,19 +47,14 @@ def find_new_setups_sync(symbol: str) -> List[Dict[str, Any]]:
 
     return []
 
-async def handle_analysis_notifications(app: Application, user_id: int, context: Dict[str, Any]):
+def get_analysis_notification(context: Dict[str, Any], notification_state: Dict[str, str]) -> Optional[Dict[str, Any]]:
     """
-    Analyzes the decision path of a setup and sends granular, step-by-step notifications.
-    This function will be responsible for the "chatty bot" feature.
+    Analyzes the decision path of a setup and returns a notification object if a new stage has been reached.
+    This is a pure function that does not have side effects.
     """
-    # Logic to be implemented in the next step:
-    # 1. Check the latest notified stage for this symbol's opportunity from state.
-    # 2. Parse the context['decision_path'] to find the current, most advanced stage.
-    # 3. If the current stage is newer than the notified stage:
     decision_path = context.get('decision_path', [])
     symbol = context.get('symbol')
 
-    # Define the stages and their corresponding messages
     stage_messages = {
         "STAGE_PASSED:4h": f"📈 **فرصة محتملة | {symbol} | 4H**\nتم رصد نمط مبدئي على فريم الأربع ساعات. جاري البحث عن تأكيد...",
         "STAGE_PASSED:ALIGN_1h": f"✅ **تأكيد مبدئي | {symbol} | 1H**\nتم العثور على توافق مع فريم الساعة. جاري تحليل فريم 15 دقيقة...",
@@ -57,33 +63,31 @@ async def handle_analysis_notifications(app: Application, user_id: int, context:
     }
 
     latest_stage = None
-    # Iterate in reverse to find the most recent significant stage
     for stage in reversed(decision_path):
         if stage in stage_messages:
             latest_stage = stage
             break
 
-    if latest_stage:
-        # Define a unique key for this specific opportunity
-        # A good key combines symbol and the start time of the primary pattern
-        try:
-            start_time = context['4h_scenarios'][0].start_point.time
-            opportunity_key = f"{symbol}_{start_time}"
-        except (KeyError, IndexError):
-            opportunity_key = f"{symbol}_unknown" # Fallback key
+    if not latest_stage:
+        return None
 
-        notification_state = load_notification_state()
-        last_notified_stage = notification_state.get(opportunity_key)
+    try:
+        start_time = context['4h_scenarios'][0].start_point.time
+        opportunity_key = f"{symbol}_{start_time}"
+    except (KeyError, IndexError):
+        opportunity_key = f"{symbol}_unknown"
 
-        if latest_stage != last_notified_stage:
-            message = stage_messages[latest_stage]
-            try:
-                await app.bot.send_message(chat_id=user_id, text=message, parse_mode='Markdown')
-                # If message is sent successfully, update the state
-                notification_state[opportunity_key] = latest_stage
-                save_notification_state(notification_state)
-            except Exception as e:
-                print(f"Error sending analysis notification for {symbol}: {e}")
+    last_notified_stage = notification_state.get(opportunity_key)
+
+    if latest_stage != last_notified_stage:
+        return {
+            "message": stage_messages[latest_stage],
+            "score": COMPLETENESS_SCORES.get(latest_stage, 0),
+            "opportunity_key": opportunity_key,
+            "stage": latest_stage
+        }
+
+    return None
 
 
 async def handle_trade_update(app: Application, user_id: int, event: Dict[str, Any], trade: Dict[str, Any]):
@@ -204,18 +208,25 @@ async def run_scanner(app: Application):
                         all_found_setups.extend(setups)
 
                 if all_found_setups:
+                    # Load state once per cycle
+                    notification_state = load_notification_state()
+                    notifications_to_send = []
+
                     deferred_setups = state_manager.load_deferred_setups()
                     deferred_keys = {f"{s['setup']['symbol']}-{s['setup']['pattern_type']}-{s['setup']['reason']}" for s in deferred_setups}
-                    info_alerts_text = []
 
                     for context in all_found_setups:
                         trade_setup = context.get("final_trade_setup")
                         decision = context.get("final_decision")
 
                         if decision == "ACCEPT" and get_today_trade_count() < MAX_TRADES_PER_DAY:
-                            # Send and save accepted trade
                             symbol = context.get("symbol")
                             alert_text = format_trade_alert(trade_setup, "multi-tf", symbol, [])
+
+                            # Add to summary list, but send ACCEPT trades immediately
+                            # as they are time-sensitive and require a message_id for management.
+                            notifications_to_send.append({"message": f"✅ **تم فتح صفقة جديدة**\n{alert_text}", "score": COMPLETENESS_SCORES["ACCEPT"]})
+
                             sent_message = await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
                             trade_setup['telegram_message_id'] = sent_message.message_id
                             trade_setup['status'] = 'ACTIVE'
@@ -224,22 +235,36 @@ async def run_scanner(app: Application):
                             print(f"SUCCESS: Saved new active trade for {symbol}")
 
                         elif decision == "DEFER":
-                            # Save new deferred setups and prepare info alert
                             setup_key = f"{trade_setup['symbol']}-{trade_setup['pattern_type']}-{trade_setup['reason']}"
                             if setup_key not in deferred_keys:
                                 state_manager.save_deferred_setups(deferred_setups + [context])
                                 info_text = (f"⏳ **فرصة قيد المراقبة | {trade_setup.get('symbol')}**\n"
                                              f"**النمط:** `{trade_setup.get('pattern_type')}`\n"
                                              f"**الحالة:** {context['decision_path'][-1]}")
-                                info_alerts_text.append(info_text)
+                                notifications_to_send.append({"message": info_text, "score": COMPLETENESS_SCORES["DEFER"]})
 
-                        else:
-                            # This is a REJECTED setup, but we might want to notify about its progress
-                            await handle_analysis_notifications(app, user_id, context)
+                        else: # REJECT case for progressive notifications
+                            notification = get_analysis_notification(context, notification_state)
+                            if notification:
+                                notifications_to_send.append(notification)
+                                # Update state in memory for this cycle
+                                notification_state[notification['opportunity_key']] = notification['stage']
 
-                    if info_alerts_text:
-                        final_info_message = "⏳ **فرص جديدة للمراقبة** ⏳\n\n" + "\n\n---\n\n".join(info_alerts_text)
-                        await app.bot.send_message(chat_id=user_id, text=final_info_message, parse_mode='Markdown')
+                    # Save the updated notification state at the end of the cycle
+                    save_notification_state(notification_state)
+
+                    # Sort and send the aggregated message
+                    if notifications_to_send:
+                        notifications_to_send.sort(key=lambda x: x.get('score', 0), reverse=True)
+
+                        header = f"**ملخص فرص التداول ({datetime.datetime.now().strftime('%H:%M')})**\n"
+                        header += "====================\n\n"
+
+                        body = "\n\n---\n\n".join([item['message'] for item in notifications_to_send])
+
+                        final_message = header + body
+                        await app.bot.send_message(chat_id=user_id, text=final_message, parse_mode='Markdown')
+
                 else:
                     print("New setup search complete. No setups found.")
 
