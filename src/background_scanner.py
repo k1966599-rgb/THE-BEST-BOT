@@ -212,17 +212,18 @@ async def run_scanner(app: Application):
             if todays_trades >= MAX_TRADES_PER_DAY:
                 print(f"Daily trade limit of {MAX_TRADES_PER_DAY} reached. Skipping new trade search.")
             else:
+                # This block handles finding setups and sending notifications.
                 all_found_setups = []
+                notifications_to_send = []
+                sent_trade_this_cycle = False
+
                 for symbol in symbols_to_scan:
                     setups = await asyncio.to_thread(find_new_setups_sync, symbol)
                     if setups:
                         all_found_setups.extend(setups)
 
                 if all_found_setups:
-                    # Load state once per cycle
                     notification_state = load_notification_state()
-                    notifications_to_send = []
-
                     deferred_setups = state_manager.load_deferred_setups()
                     deferred_keys = {f"{s['setup']['symbol']}-{s['setup']['pattern_type']}-{s['setup']['reason']}" for s in deferred_setups}
 
@@ -231,13 +232,9 @@ async def run_scanner(app: Application):
                         decision = context.get("final_decision")
 
                         if decision == "ACCEPT" and get_today_trade_count() < MAX_TRADES_PER_DAY:
+                            sent_trade_this_cycle = True
                             symbol = context.get("symbol")
                             alert_text = format_trade_alert(trade_setup, "multi-tf", symbol, [])
-
-                            # Add to summary list, but send ACCEPT trades immediately
-                            # as they are time-sensitive and require a message_id for management.
-                            notifications_to_send.append({"message": f"✅ **تم فتح صفقة جديدة**\n{alert_text}", "score": COMPLETENESS_SCORES["ACCEPT"]})
-
                             sent_message = await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
                             trade_setup['telegram_message_id'] = sent_message.message_id
                             trade_setup['status'] = 'ACTIVE'
@@ -254,30 +251,26 @@ async def run_scanner(app: Application):
                                              f"**الحالة:** {context['decision_path'][-1]}")
                                 notifications_to_send.append({"message": info_text, "score": COMPLETENESS_SCORES["DEFER"]})
 
-                        else: # REJECT case for progressive notifications
+                        else:  # REJECT case for progressive notifications
                             notification = get_analysis_notification(context, notification_state)
                             if notification:
                                 notifications_to_send.append(notification)
-                                # Update state in memory for this cycle
                                 notification_state[notification['opportunity_key']] = notification['stage']
 
-                    # Save the updated notification state at the end of the cycle
                     save_notification_state(notification_state)
 
-                    # Sort and send the aggregated message
-                    if notifications_to_send:
-                        notifications_to_send.sort(key=lambda x: x.get('score', 0), reverse=True)
+                # Now, decide what message to send based on what we found.
+                if notifications_to_send:
+                    notifications_to_send.sort(key=lambda x: x.get('score', 0), reverse=True)
+                    header = f"**ملخص فرص التداول ({datetime.datetime.now().strftime('%H:%M')})**\n"
+                    header += "====================\n\n"
+                    body = "\n\n---\n\n".join([item['message'] for item in notifications_to_send])
+                    final_message = header + body
+                    await app.bot.send_message(chat_id=user_id, text=final_message, parse_mode='Markdown')
 
-                        header = f"**ملخص فرص التداول ({datetime.datetime.now().strftime('%H:%M')})**\n"
-                        header += "====================\n\n"
-
-                        body = "\n\n---\n\n".join([item['message'] for item in notifications_to_send])
-
-                        final_message = header + body
-                        await app.bot.send_message(chat_id=user_id, text=final_message, parse_mode='Markdown')
-
-                else:
-                    print("New setup search complete. No setups found.")
+                elif not sent_trade_this_cycle:
+                    # Only send "no setups" if no summary was sent AND no individual trades were sent.
+                    print("Scan cycle complete. No new notifications to send.")
                     if notify_on_no_setups:
                         await app.bot.send_message(chat_id=user_id, text="✅ دورة فحص مكتملة. لم يتم رصد أي فرص جديدة حاليًا.")
 
