@@ -44,7 +44,7 @@ async def main() -> None:
             # We use per_user and per_chat persistence to make this more robust
             # across bot restarts if the user is in the middle of a conversation.
             name="add_symbol_conversation",
-            persistent=True,
+            persistent=False,
         )
         application.add_handler(add_symbol_conv)
 
