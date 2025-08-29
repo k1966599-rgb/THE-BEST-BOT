@@ -1,8 +1,12 @@
 import asyncio
 import signal
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 
-from src.bot_interface.handlers import start, button, load_bot_state
+from src.bot_interface.handlers import (
+    start, button, load_bot_state,
+    add_symbol_start, add_symbol_receive, cancel_conversation,
+    AWAITING_SYMBOL_TO_ADD
+)
 from src.background_scanner import run_scanner
 from src.utils.config_loader import config
 
@@ -28,8 +32,25 @@ async def main() -> None:
         )
 
     try:
-        # Register the command and button handlers
+        # --- Handler Registration ---
+
+        # Conversation handler for adding a symbol
+        add_symbol_conv = ConversationHandler(
+            entry_points=[CallbackQueryHandler(add_symbol_start, pattern='^add_symbol_start$')],
+            states={
+                AWAITING_SYMBOL_TO_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_symbol_receive)],
+            },
+            fallbacks=[CommandHandler('cancel', cancel_conversation)],
+            # We use per_user and per_chat persistence to make this more robust
+            # across bot restarts if the user is in the middle of a conversation.
+            name="add_symbol_conversation",
+            persistent=True,
+        )
+        application.add_handler(add_symbol_conv)
+
+        # Regular command and button handlers
         application.add_handler(CommandHandler("start", start))
+        # The main button handler should be after specific callback handlers
         application.add_handler(CallbackQueryHandler(button))
 
         # Initialize the application

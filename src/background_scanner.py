@@ -181,12 +181,19 @@ def cleanup_expired_deferred_setups():
 async def run_scanner(app: Application):
     """The main background task."""
     print("Background scanner started.")
-    symbols_to_scan = config['symbols_to_scan']
-    print(f"Scanner will analyze the following symbols: {symbols_to_scan}")
+    # Symbols to scan are now loaded inside the loop to allow for dynamic updates.
 
     while True:
         try:
-            print(f"\n[{datetime.datetime.now()}] --- Running new scan cycle ---")
+            # Reload config at the start of each cycle to get the latest symbol list
+            current_config = load_config()
+            if not current_config:
+                print("ERROR: Could not load config.yaml, skipping cycle.")
+                await asyncio.sleep(60)
+                continue
+            symbols_to_scan = current_config.get('symbols_to_scan', [])
+
+            print(f"\n[{datetime.datetime.now()}] --- Running new scan cycle for symbols: {symbols_to_scan} ---")
             user_id = app.bot_data.get('user_id')
             if not user_id:
                 print("User ID not found, skipping.")

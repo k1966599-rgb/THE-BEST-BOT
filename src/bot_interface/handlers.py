@@ -5,7 +5,7 @@ import traceback
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 import pandas as pd
 import os
-from telegram.ext import ContextTypes, Application
+from telegram.ext import ContextTypes, Application, ConversationHandler, MessageHandler, filters
 
 from src.background_scanner import run_scanner
 from src.strategies.h4_strategy import h4_long_term_strategy
@@ -15,8 +15,13 @@ from src.strategies.m3_strategy import m3_scalp_strategy
 from src.trading.trade_proposer import define_trade_setup
 from src.bot_interface.formatters import format_elliott_wave_report, format_trade_alert
 from src.trading import state_manager, trade_logger
+from src.utils.config_loader import load_config
+from src.utils import config_manager
 
 BOT_NAME = "Elliott Wave Bot"
+
+# --- Conversation States ---
+AWAITING_SYMBOL_TO_ADD = 1
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Displays the main menu."""
@@ -27,13 +32,147 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
         [InlineKeyboardButton("🟢 تشغيل البوت", callback_data='start_bot'), InlineKeyboardButton("🔴 ايقاف البوت", callback_data='stop_bot')],
         [InlineKeyboardButton("📊 تحليل موجي", callback_data='wave_analysis_menu')],
-        [InlineKeyboardButton("📈 الصفقات النشطة", callback_data='active_trades'), InlineKeyboardButton("📋 الاحصائيات", callback_data='statistics')]
+        [InlineKeyboardButton("📈 الصفقات النشطة", callback_data='active_trades'), InlineKeyboardButton("📋 الاحصائيات", callback_data='statistics')],
+        [InlineKeyboardButton("⚙️ الإعدادات", callback_data='settings_menu')]
     ]
     text = f"**{BOT_NAME}**\n{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n{status_text}\n\nاختر احد الأوامر:"
     if update.callback_query:
         await update.callback_query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
         await update.message.reply_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+
+async def show_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, status_message: str = None) -> None:
+    """Displays the main settings menu, showing current symbols and management options."""
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    config = load_config()
+    symbols_list = config.get('symbols_to_scan', [])
+
+    if symbols_list:
+        symbols_text = "\n".join([f"- `{symbol}`" for symbol in symbols_list])
+    else:
+        symbols_text = "لا توجد عملات في قائمة المراقبة حاليًا."
+
+    header_text = f"⚙️ **إعدادات البوت** ⚙️"
+    if status_message:
+        # Prepend status message if it exists
+        header_text = f"{status_message}\n\n{header_text}"
+
+    text = f"{header_text}\n\n" \
+           f"**العملات قيد المراقبة حاليًا:**\n{symbols_text}\n\n" \
+           f"اختر الإجراء الذي تريد القيام به:"
+
+    keyboard = [
+        [InlineKeyboardButton("➕ إضافة عملة", callback_data='add_symbol_start')],
+        [InlineKeyboardButton("➖ حذف عملة", callback_data='remove_symbol_start')],
+        [InlineKeyboardButton("⬅️ رجوع إلى القائمة الرئيسية", callback_data='main_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    if query:
+        await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode='Markdown')
+
+
+async def add_symbol_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the conversation to add a new symbol."""
+    query = update.callback_query
+    await query.answer()
+    # Store the message ID so we can edit it later after the user replies.
+    context.user_data['settings_message_id'] = query.message.message_id
+    text = "يرجى إرسال رمز العملة التي تريد إضافتها (مثال: `BTCUSDT`).\n\nلإلغاء العملية، اكتب /cancel."
+    await query.edit_message_text(text=text, parse_mode='Markdown')
+    return AWAITING_SYMBOL_TO_ADD
+
+
+async def add_symbol_receive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receives the symbol, adds it to the config, and shows the updated settings menu."""
+    message_id = context.user_data.get('settings_message_id')
+    chat_id = update.effective_chat.id
+    new_symbol = update.message.text.upper().strip()
+
+    # Delete the user's message to keep the chat clean
+    await update.message.delete()
+
+    if not new_symbol.endswith("USDT") or " " in new_symbol or len(new_symbol) > 20:
+        await context.bot.send_message(chat_id=chat_id, text="رمز العملة غير صالح. يرجى المحاولة مرة أخرى أو اكتب /cancel للإلغاء.")
+        # We stay in the same state, waiting for a valid symbol
+        return AWAITING_SYMBOL_TO_ADD
+
+    was_added = config_manager.add_symbol_to_config(new_symbol)
+
+    # Re-generate the settings menu text to show the result
+    config = load_config()
+    symbols_list = config.get('symbols_to_scan', [])
+    symbols_text = "\n".join([f"- `{symbol}`" for symbol in symbols_list]) if symbols_list else "لا توجد عملات."
+
+    if was_added:
+        status_text = f"✅ تم إضافة `{new_symbol}` بنجاح."
+    else:
+        status_text = f"⚠️ العملة `{new_symbol}` موجودة بالفعل في القائمة."
+
+    text = f"⚙️ **إعدادات البوت** ⚙️\n\n{status_text}\n\n" \
+           f"**العملات قيد المراقبة حاليًا:**\n{symbols_text}\n\n" \
+           f"اختر الإجراء الذي تريد القيام به:"
+
+    keyboard = [
+        [InlineKeyboardButton("➕ إضافة عملة", callback_data='add_symbol_start')],
+        [InlineKeyboardButton("➖ حذف عملة", callback_data='remove_symbol_start')],
+        [InlineKeyboardButton("⬅️ رجوع إلى القائمة الرئيسية", callback_data='main_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # Edit the original message with the updated menu
+    if message_id:
+        try:
+            await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=reply_markup, parse_mode='Markdown')
+        except Exception as e:
+            print(f"Error editing message: {e}") # Handle case where message is too old
+            # If editing fails, send a new message
+            await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup, parse_mode='Markdown')
+
+    # Clean up and end conversation
+    if 'settings_message_id' in context.user_data:
+        del context.user_data['settings_message_id']
+    return ConversationHandler.END
+
+
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels and ends the conversation, cleaning up user_data."""
+    await update.message.reply_text('تم إلغاء العملية. اضغط /start للعودة إلى القائمة الرئيسية.')
+    if 'settings_message_id' in context.user_data:
+        del context.user_data['settings_message_id']
+    return ConversationHandler.END
+
+
+async def remove_symbol_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Displays a menu with all current symbols, allowing the user to select one for removal."""
+    query = update.callback_query
+    await query.answer()
+
+    symbols_list = config_manager.get_symbols_from_config()
+
+    if not symbols_list:
+        await query.edit_message_text(text="لا توجد عملات لحذفها.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ رجوع", callback_data='settings_menu')]]))
+        return
+
+    keyboard = []
+    # Create a button for each symbol, two per row
+    for i in range(0, len(symbols_list), 2):
+        row = [
+            InlineKeyboardButton(f"❌ {symbols_list[i]}", callback_data=f"remove_symbol_confirm_{symbols_list[i]}")
+        ]
+        if i + 1 < len(symbols_list):
+            row.append(InlineKeyboardButton(f"❌ {symbols_list[i+1]}", callback_data=f"remove_symbol_confirm_{symbols_list[i+1]}"))
+        keyboard.append(row)
+
+    keyboard.append([InlineKeyboardButton("⬅️ رجوع", callback_data='settings_menu')])
+
+    text = "اختر العملة التي تريد حذفها من قائمة المراقبة:"
+    await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 async def show_symbol_selection_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Displays a menu to select a symbol for analysis."""
@@ -164,6 +303,21 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await query.edit_message_text(text="استراتيجية غير معروفة.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
         except IndexError:
             await query.edit_message_text(text="خطأ في تحليل أمر الاستراتيجية.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
+        return
+
+    # --- Settings Menu ---
+    if data == 'settings_menu':
+        await show_settings_menu(update, context)
+        return
+    if data == 'remove_symbol_start':
+        await remove_symbol_menu(update, context)
+        return
+    if data.startswith('remove_symbol_confirm_'):
+        symbol_to_remove = data.split('_')[-1]
+        was_removed = config_manager.remove_symbol_from_config(symbol_to_remove)
+
+        status_message = f"✅ تم حذف `{symbol_to_remove}` بنجاح." if was_removed else f"⚠️ لم يتم العثور على `{symbol_to_remove}`."
+        await show_settings_menu(update, context, status_message=status_message)
         return
 
     # --- Active Trades / Stats ---
