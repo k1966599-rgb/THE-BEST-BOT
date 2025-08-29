@@ -45,7 +45,7 @@ while true; do
         echo "Update found. Pulling changes..."
         git pull origin main
         echo "Installing/updating dependencies..."
-        pip install -r requirements.txt
+        pip install -r requirements.txt --break-system-packages
     fi
 
     # 4. Start the bot if it's not running
