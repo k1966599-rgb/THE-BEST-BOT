@@ -14,7 +14,8 @@ from src.trading.state_manager import load_notification_state, save_notification
 from src.data.bybit_client import BybitClient
 
 # --- Load constants from config ---
-SCAN_INTERVAL_SECONDS = config.get('scanner', {}).get('interval_seconds', 900)
+SCANNER_CONFIG = config.get('scanner', {})
+SCAN_INTERVAL_SECONDS = SCANNER_CONFIG.get('interval_seconds', 900)
 TRADING_RULES = config.get('trading_rules', {})
 MAX_TRADES_PER_DAY = TRADING_RULES.get('max_trades_per_day', 3)
 MAX_OPPORTUNITY_AGE_HOURS = TRADING_RULES.get('max_opportunity_age_hours', 24)
@@ -185,13 +186,16 @@ async def run_scanner(app: Application):
 
     while True:
         try:
-            # Reload config at the start of each cycle to get the latest symbol list
+            # Reload config at the start of each cycle to get the latest settings
             current_config = load_config()
             if not current_config:
                 print("ERROR: Could not load config.yaml, skipping cycle.")
                 await asyncio.sleep(60)
                 continue
-            symbols_to_scan = current_config.get('symbols_to_scan', [])
+
+            scanner_config = current_config.get('scanner', {})
+            symbols_to_scan = scanner_config.get('symbols_to_scan', [])
+            notify_on_no_setups = scanner_config.get('notify_on_no_setups', False)
 
             print(f"\n[{datetime.datetime.now()}] --- Running new scan cycle for symbols: {symbols_to_scan} ---")
             user_id = app.bot_data.get('user_id')
@@ -274,6 +278,8 @@ async def run_scanner(app: Application):
 
                 else:
                     print("New setup search complete. No setups found.")
+                    if notify_on_no_setups:
+                        await app.bot.send_message(chat_id=user_id, text="✅ دورة فحص مكتملة. لم يتم رصد أي فرص جديدة حاليًا.")
 
             # --- Part 3: Monitor Existing Active Trades ---
             await monitor_active_trades(app, user_id)
