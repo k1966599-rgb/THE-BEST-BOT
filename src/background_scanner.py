@@ -6,7 +6,7 @@ import os
 from telegram.ext import Application
 from typing import Dict, Any, List, Optional
 
-from src.utils.config_loader import config
+from src.utils.config_loader import config, load_config
 from src.bot_interface.formatters import format_trade_alert
 from src.analysis_manager import AnalysisManager
 from src.trading import state_manager, trade_manager, trade_logger
