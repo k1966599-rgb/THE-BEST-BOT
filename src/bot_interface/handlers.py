@@ -48,8 +48,7 @@ async def show_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE,
     if query:
         await query.answer()
 
-    config = load_config()
-    symbols_list = config.get('symbols_to_scan', [])
+    symbols_list = config_manager.get_symbols_from_config()
 
     if symbols_list:
         symbols_text = "\n".join([f"- `{symbol}`" for symbol in symbols_list])
@@ -104,8 +103,7 @@ async def add_symbol_receive(update: Update, context: ContextTypes.DEFAULT_TYPE)
     was_added = config_manager.add_symbol_to_config(new_symbol)
 
     # Re-generate the settings menu text to show the result
-    config = load_config()
-    symbols_list = config.get('symbols_to_scan', [])
+    symbols_list = config_manager.get_symbols_from_config()
     symbols_text = "\n".join([f"- `{symbol}`" for symbol in symbols_list]) if symbols_list else "لا توجد عملات."
 
     if was_added:
