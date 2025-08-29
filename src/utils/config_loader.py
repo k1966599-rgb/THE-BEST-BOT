@@ -60,6 +60,5 @@ def load_config():
     logging.info("Configuration loaded successfully and securely.")
     return config
 
-# Create a single, globally accessible config instance
-# This will be imported by other modules in the application
-config = load_config()
+# The load_config() function should be called by each module that needs
+# configuration data to ensure the latest version is always used.

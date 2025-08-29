@@ -6,19 +6,14 @@ import os
 from telegram.ext import Application
 from typing import Dict, Any, List, Optional
 
-from src.utils.config_loader import config, load_config
+from src.utils.config_loader import load_config
 from src.bot_interface.formatters import format_trade_alert
 from src.analysis_manager import AnalysisManager
 from src.trading import state_manager, trade_manager, trade_logger
 from src.trading.state_manager import load_notification_state, save_notification_state
 from src.data.bybit_client import BybitClient
 
-# --- Load constants from config ---
-SCANNER_CONFIG = config.get('scanner', {})
-SCAN_INTERVAL_SECONDS = SCANNER_CONFIG.get('interval_seconds', 900)
-TRADING_RULES = config.get('trading_rules', {})
-MAX_TRADES_PER_DAY = TRADING_RULES.get('max_trades_per_day', 3)
-MAX_OPPORTUNITY_AGE_HOURS = TRADING_RULES.get('max_opportunity_age_hours', 24)
+# --- Constants are now loaded inside the scanner loop to ensure they are fresh ---
 
 
 # --- Scoring for aggregated notifications ---
@@ -166,14 +161,14 @@ def get_today_trade_count() -> int:
         print(f"Error reading trade history: {e}")
         return 0
 
-def cleanup_expired_deferred_setups():
+def cleanup_expired_deferred_setups(max_age_hours: int):
     """Loads deferred setups and removes any that are older than the configured max age."""
     now = datetime.datetime.now()
     setups_to_keep = []
     for setup_obj in state_manager.load_deferred_setups():
         first_seen = datetime.datetime.fromisoformat(setup_obj['first_seen_timestamp'])
         age_hours = (now - first_seen).total_seconds() / 3600
-        if age_hours < MAX_OPPORTUNITY_AGE_HOURS:
+        if age_hours < max_age_hours:
             setups_to_keep.append(setup_obj)
         else:
             print(f"INFO: Expired deferred setup for {setup_obj['setup']['symbol']} removed.")
@@ -193,9 +188,16 @@ async def run_scanner(app: Application):
                 await asyncio.sleep(60)
                 continue
 
+            # --- Load fresh constants from config for this cycle ---
             scanner_config = current_config.get('scanner', {})
+            trading_rules = current_config.get('trading_rules', {})
+
             symbols_to_scan = scanner_config.get('symbols_to_scan', [])
             notify_on_no_setups = scanner_config.get('notify_on_no_setups', False)
+            scan_interval_seconds = scanner_config.get('interval_seconds', 900)
+
+            max_trades_per_day = trading_rules.get('max_trades_per_day', 3)
+            max_opportunity_age_hours = trading_rules.get('max_opportunity_age_hours', 24)
 
             print(f"\n[{datetime.datetime.now()}] --- Running new scan cycle for symbols: {symbols_to_scan} ---")
             user_id = app.bot_data.get('user_id')
@@ -205,12 +207,12 @@ async def run_scanner(app: Application):
                 continue
 
             # --- Part 1: Cleanup Expired Opportunities ---
-            cleanup_expired_deferred_setups()
+            cleanup_expired_deferred_setups(max_opportunity_age_hours)
 
             # --- Part 2: Find New Trade Setups ---
             todays_trades = get_today_trade_count()
-            if todays_trades >= MAX_TRADES_PER_DAY:
-                print(f"Daily trade limit of {MAX_TRADES_PER_DAY} reached. Skipping new trade search.")
+            if todays_trades >= max_trades_per_day:
+                print(f"Daily trade limit of {max_trades_per_day} reached. Skipping new trade search.")
             else:
                 # This block handles finding setups and sending notifications.
                 all_found_setups = []
@@ -277,8 +279,8 @@ async def run_scanner(app: Application):
             # --- Part 3: Monitor Existing Active Trades ---
             await monitor_active_trades(app, user_id)
 
-            print(f"--- Scan cycle complete. Waiting {SCAN_INTERVAL_SECONDS} seconds. ---")
-            await asyncio.sleep(SCAN_INTERVAL_SECONDS)
+            print(f"--- Scan cycle complete. Waiting {scan_interval_seconds} seconds. ---")
+            await asyncio.sleep(scan_interval_seconds)
 
         except asyncio.CancelledError:
             print("Background scanner stopped.")
