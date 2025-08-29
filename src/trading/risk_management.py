@@ -50,7 +50,31 @@ def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: 
         pattern_type = pattern.pattern_type.lower()
         points = pattern.points
 
-        if "impulse" in pattern_type and len(points) >= 6:
+        # Proactive strategy: Trade Wave 5 after a completed Wave 4
+        if "impulse" in pattern_type and len(points) == 5:
+            p0, p1, p2, p3, p4 = points
+
+            # Elliott Wave Rule: Wave 4 must not enter the price territory of Wave 1.
+            if p4.price <= p1.price:
+                return None
+
+            # Entry is set in a zone around the end of Wave 4, anticipating the start of Wave 5.
+            entry_price = p4.price
+            entry_zone_top = p4.price * 1.005 # 0.5% buffer above P4
+            entry_zone_bottom = p4.price * 0.995 # 0.5% buffer below P4
+
+            # Stop loss is placed at the high of wave 1. This is the invalidation point for the pattern.
+            stop_loss_price = p1.price
+
+            # Targets are calculated using common Fibonacci extensions of Wave 1's height, projected from the end of Wave 4.
+            wave_1_height = p1.price - p0.price
+            targets = {
+                level: p4.price + level * wave_1_height
+                for level in [0.618, 1.0, 1.618]
+            }
+            reason = f"توقع استكمال الموجة الدافعة (الموجة 5)"
+
+        elif "impulse" in pattern_type and len(points) >= 6:
             p0, _, _, _, _, p5 = points
             retracements = get_fib_retracement(p0.price, p5.price)
             entry_zone_top = retracements.get(0.5)
