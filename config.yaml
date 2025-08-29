@@ -70,3 +70,4 @@ trading_rules:
   min_rr_ratio: 2.0         # Minimum Risk/Reward ratio to accept a trade
   min_confidence_score: 70  # Minimum confidence score (out of 100) to accept a trade
   max_trades_per_day: 3     # Maximum number of new trades to open per day to avoid over-trading
+  max_opportunity_age_hours: 24 # Max hours to keep a deferred opportunity before it expires

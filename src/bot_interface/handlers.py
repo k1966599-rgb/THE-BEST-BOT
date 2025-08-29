@@ -3,6 +3,8 @@ import asyncio
 import json
 import traceback
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import pandas as pd
+import os
 from telegram.ext import ContextTypes, Application
 
 from src.background_scanner import run_scanner
@@ -12,6 +14,7 @@ from src.strategies.m5_strategy import m5_scalp_strategy
 from src.strategies.m3_strategy import m3_scalp_strategy
 from src.trading.trade_proposer import define_trade_setup
 from src.bot_interface.formatters import format_elliott_wave_report, format_trade_alert
+from src.trading import state_manager, trade_logger
 
 BOT_NAME = "Elliott Wave Bot"
 
@@ -163,10 +166,53 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await query.edit_message_text(text="خطأ في تحليل أمر الاستراتيجية.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
         return
 
-    # --- Placeholder Buttons ---
-    response_map = {'active_trades': "📈 **الصفقات النشطة**\n\n(هذه الميزة قيد التطوير)", 'statistics': "📋 **الاحصائيات**\n\n(هذه الميزة قيد التطوير)"}
-    if data in response_map:
-        await query.edit_message_text(text=response_map[data], parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
+    # --- Active Trades / Stats ---
+    if data == 'active_trades':
+        active_trades = state_manager.load_active_trades()
+        if not active_trades:
+            text = "📈 **الصفقات النشطة**\n\nلا توجد صفقات نشطة حاليًا."
+        else:
+            text = f"📈 **الصفقات النشطة ({len(active_trades)})**\n\n"
+            for trade in active_trades:
+                hit_targets_count = len(trade.get('hit_targets_indices', []))
+                total_targets = len(trade.get('targets', []))
+                text += (f"**- {trade.get('symbol')}**\n"
+                         f"  - **الحالة:** {trade.get('status', 'N/A')}\n"
+                         f"  - **الدخول:** ${trade.get('entry', 0):.2f}\n"
+                         f"  - **الأهداف المحققة:** {hit_targets_count}/{total_targets}\n\n")
+
+        await query.edit_message_text(text=text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
+        return
+
+    if data == 'statistics':
+        text = "📋 **إحصائيات الأداء**\n\n"
+        log_file = trade_logger.LOG_FILE
+        if not os.path.exists(log_file):
+            text += "لا يوجد سجل صفقات حتى الآن."
+        else:
+            try:
+                df = pd.read_csv(log_file)
+                if df.empty:
+                     text += "لا يوجد سجل صفقات حتى الآن."
+                else:
+                    total_trades = len(df)
+                    sl_trades = df[df['outcome'] == 'SL_HIT']
+                    tp_final_trades = df[df['outcome'] == 'TP_FINAL_HIT']
+
+                    win_rate = (len(tp_final_trades) / total_trades) * 100 if total_trades > 0 else 0
+                    avg_rr = df['rr_ratio'].mean()
+
+                    text += f"**إجمالي الصفقات المسجلة:** {total_trades}\n"
+                    text += f"**صفقات رابحة (الهدف النهائي):** {len(tp_final_trades)}\n"
+                    text += f"**صفقات خاسرة (وقف الخسارة):** {len(sl_trades)}\n"
+                    text += f"**نسبة النجاح:** {win_rate:.1f}%\n"
+                    text += f"**متوسط R:R:** {avg_rr:.2f}\n"
+
+            except Exception as e:
+                text += f"حدث خطأ أثناء قراءة سجل الصفقات: {e}"
+
+        await query.edit_message_text(text=text, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("رجوع ⬅️", callback_data='main_menu')]]))
+        return
 
 # --- State Persistence ---
 STATE_FILE = ".bot_state.json"
