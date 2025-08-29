@@ -6,38 +6,41 @@ telegram:
   token: null
   chat_id: "782008836"
 
-# 1. List of symbols for the automatic scanner to analyze
-symbols_to_scan:
-  - BTCUSDT
-  - ETHUSDT
-  - SOLUSDT
-  - XRPUSDT
-  - DOGEUSDT
-  - ADAUSDT
-  - AVAXUSDT
-  - TRXUSDT
-  - DOTUSDT
-  - LINKUSDT
-  - MATICUSDT
-  - SHIBUSDT
-  - LTCUSDT
-  - BCHUSDT
-  - UNIUSDT
-  - ATOMUSDT
-  - ETCUSDT
-  - XLMUSDT
-  - NEARUSDT
-  - ALGOUSDT
-  - VETUSDT
-  - ICPUSDT
-  - FILUSDT
-  - EOSUSDT
-  - XTZUSDT
-  - AAVEUSDT
-  - MKRUSDT
-  - FTMUSDT
-  - SANDUSDT
-  - MANAUSDT
+# 1. Scanner Configuration
+scanner:
+  interval_seconds: 900 # Time in seconds between each full scan of all symbols
+  notify_on_no_setups: true # Send a message even if no opportunities are found
+  symbols_to_scan:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - XRPUSDT
+    - DOGEUSDT
+    - ADAUSDT
+    - AVAXUSDT
+    - TRXUSDT
+    - DOTUSDT
+    - LINKUSDT
+    - MATICUSDT
+    - SHIBUSDT
+    - LTCUSDT
+    - BCHUSDT
+    - UNIUSDT
+    - ATOMUSDT
+    - ETCUSDT
+    - XLMUSDT
+    - NEARUSDT
+    - ALGOUSDT
+    - VETUSDT
+    - ICPUSDT
+    - FILUSDT
+    - EOSUSDT
+    - XTZUSDT
+    - AAVEUSDT
+    - MKRUSDT
+    - FTMUSDT
+    - SANDUSDT
+    - MANAUSDT
 
 # 2. Pivot Detection Settings
 pivot_sensitivity:
