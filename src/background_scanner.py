@@ -24,10 +24,16 @@ def find_new_setups_sync(symbol: str) -> List[Dict[str, Any]]:
     """Uses the AnalysisManager to perform a full hierarchical analysis for a single symbol."""
     manager = AnalysisManager(symbol)
     manager.run_hierarchical_analysis()
+
+    # For ACCEPT/DEFER, we add a timestamp.
     if manager.context.get("final_decision") in ["ACCEPT", "DEFER"]:
-        # Add a timestamp to the context when it's first found
         manager.context['first_seen_timestamp'] = datetime.datetime.now().isoformat()
+
+    # Return the context if any analysis was actually performed.
+    # The main loop will handle routing based on the final_decision.
+    if manager.context and manager.context.get("decision_path"):
         return [manager.context]
+
     return []
 
 async def handle_analysis_notifications(app: Application, user_id: int, context: Dict[str, Any]):
