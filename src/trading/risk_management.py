@@ -61,6 +61,8 @@ def _build_trade_dict(
 
     position_size = _calculate_position_size(entry, stop_loss, trade_type)
     rr_ratio = _calculate_rr_ratio(entry, stop_loss, targets, trade_type)
+
+    # Use the simple quality score for now, can be enhanced later
     confidence_score = round(pattern.confidence_score, 2)
 
     if rr_ratio is None or rr_ratio < MIN_RR_RATIO: return None
@@ -78,7 +80,7 @@ def _build_trade_dict(
         "entry_zone": (entry * 1.005, entry * 0.995) # Generic 0.5% entry zone
     }
 
-# --- NEW TRADE CALCULATION LOGIC (PHASE 2) ---
+# --- ADVANCED TRADE CALCULATION LOGIC ---
 
 def calculate_impulsive_trade(pattern: WavePattern, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
@@ -91,41 +93,41 @@ def calculate_impulsive_trade(pattern: WavePattern, historical_data: pd.DataFram
 
     num_points = len(pattern.points)
 
-    # --- Trade Wave 3 (after Wave 2) ---
+    # --- Trade Wave 3 (after Wave 2 is complete) ---
     if num_points == 3: # Points 0, 1, 2 are present
         p0, p1, p2 = pattern.points
 
-        # Entry is a fib retracement of wave 1, trade anticipates wave 3
+        # Entry is at the end of wave 2
         entry = p2.price
-        stop_loss = p0.price - (atr_value * ATR_MULTIPLIER)
+        stop_loss = p0.price - (atr_value * ATR_MULTIPLIER) # SL below the start of wave 1
 
-        # Target for Wave 3 is 1.618 extension of Wave 1
+        # Target for Wave 3 is 1.618 extension of Wave 1, projected from end of wave 2
         wave_1_height = p1.price - p0.price
         target1 = p2.price + (1.618 * wave_1_height)
-        target2 = p2.price + (2.618 * wave_1_height)
+        target2 = p2.price + (2.618 * wave_1_height) # Optional larger target
 
-        return _build_trade_dict("LONG", entry, stop_loss, [target1, target2], pattern, "Anticipating Wave 3")
+        return _build_trade_dict("LONG", entry, stop_loss, sorted([target1, target2]), pattern, "Anticipating Wave 3")
 
-    # --- Trade Wave 5 (after Wave 4) ---
+    # --- Trade Wave 5 (after Wave 4 is complete) ---
     if num_points == 5: # Points 0, 1, 2, 3, 4 are present
         p0, p1, p2, p3, p4 = pattern.points
 
         entry = p4.price
-        stop_loss = p2.price - (atr_value * ATR_MULTIPLIER) # SL below wave 2
+        stop_loss = p2.price - (atr_value * ATR_MULTIPLIER) # SL below end of wave 2
 
-        # Target for Wave 5 is often related to wave 1 or wave 3
-        wave_1_height = p1.price - p0.price
-        target1 = p4.price + (0.618 * wave_1_height)
-        target2 = p4.price + (1.0 * wave_1_height)
+        # Target for Wave 5 is often related to wave 1
+        wave_1_to_3_height = p3.price - p0.price
+        target1 = p4.price + (0.618 * wave_1_to_3_height) # User-specified target
+        target2 = p4.price + (1.0 * (p1.price - p0.price)) # Wave 5 = Wave 1
 
-        return _build_trade_dict("LONG", entry, stop_loss, [target1, target2], pattern, "Anticipating Wave 5")
+        return _build_trade_dict("LONG", entry, stop_loss, sorted([target1, target2]), pattern, "Anticipating Wave 5")
 
     return None
 
 def calculate_corrective_trade(pattern: WavePattern, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
     Calculates a SHORT trade after a completed 5-wave impulse, anticipating an ABC correction.
-    Requires RSI divergence between wave 3 and 5.
+    Requires RSI divergence between wave 3 and 5 as a confirmation.
     """
     atr_value = calculate_atr(historical_data)
     if atr_value == 0: return None
@@ -144,10 +146,12 @@ def calculate_corrective_trade(pattern: WavePattern, historical_data: pd.DataFra
     entry = p5.price
     stop_loss = p5.price + (atr_value * ATR_MULTIPLIER) # Tight SL above the high
 
-    # Targets for Wave A/C are based on retracement of the whole impulse
+    # Target for Wave C is often equal to length of Wave A
+    # For now, we use fib retracement of the whole impulse as a proxy
     impulse_height = p5.price - p0.price
     target1 = p5.price - (0.382 * impulse_height)
     target2 = p5.price - (0.500 * impulse_height)
+    target3 = p5.price - (0.618 * impulse_height)
 
-    reason = "Anticipating ABC Correction (RSI Divergence)"
-    return _build_trade_dict("SHORT", entry, stop_loss, [target1, target2], pattern, reason)
+    reason = "Anticipating ABC Correction (RSI Divergence Confirmed)"
+    return _build_trade_dict("SHORT", entry, stop_loss, sorted([target1, target2, target3]), pattern, reason)
