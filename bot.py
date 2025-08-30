@@ -2,13 +2,16 @@ import asyncio
 import signal
 import fcntl
 import sys
+import os
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 
-# --- Single Instance Lock ---
+# --- Single Instance Lock (Improved) ---
 # This ensures that only one instance of the bot can run at a time.
 try:
     lock_file = open('/tmp/trading_bot.lock', 'w')
     fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    lock_file.write(str(os.getpid()))
+    lock_file.flush()
 except IOError:
     print("البوت شغال فعلاً! (Another instance is already running.)")
     sys.exit(1)
@@ -79,7 +82,9 @@ async def main() -> None:
         if load_bot_state():
             print("Bot was running previously. Starting background scanner...")
             application.bot_data['is_running'] = True
-            asyncio.create_task(run_scanner(application))
+            # The following line is commented out as per user request to prevent multiple processes
+            # and to separate the bot from the scanner functionality.
+            # asyncio.create_task(run_scanner(application))
 
         # Keep the application running until a stop signal is received
         # This replaces the blocking run_polling() call
