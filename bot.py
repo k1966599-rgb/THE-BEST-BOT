@@ -1,6 +1,18 @@
 import asyncio
 import signal
+import fcntl
+import sys
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
+
+# --- Single Instance Lock ---
+# This ensures that only one instance of the bot can run at a time.
+try:
+    lock_file = open('/tmp/trading_bot.lock', 'w')
+    fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except IOError:
+    print("البوت شغال فعلاً! (Another instance is already running.)")
+    sys.exit(1)
+# ---
 
 from src.bot_interface.handlers import (
     start, button, load_bot_state,
