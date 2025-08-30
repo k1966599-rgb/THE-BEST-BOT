@@ -1,0 +1,20 @@
+{
+    "timeframes": {
+        "4h": 1.0,
+        "1h": 1.0,
+        "15m": 1.0,
+        "5m": 1.0,
+        "3m": 1.0
+    },
+    "indicators": {
+        "rsi": 1.0,
+        "macd": 1.0,
+        "stoch_rsi": 1.0,
+        "volume": 1.0
+    },
+    "wave_patterns": {
+        "impulse": 1.0,
+        "corrective": 1.0
+    },
+    "last_updated": "2025-01-01T00:00:00"
+}

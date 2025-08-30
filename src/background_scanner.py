@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+from datetime import timedelta
 import traceback
 import pandas as pd
 import os
@@ -183,6 +184,12 @@ async def run_scanner(app: Application):
 
     while True:
         try:
+            # --- Check if it's time to run the learning cycle ---
+            weights = learning_system.load_weights()
+            last_learned = datetime.datetime.fromisoformat(weights.get('last_updated', '2025-01-01T00:00:00'))
+            if datetime.datetime.now() - last_learned > timedelta(hours=24):
+                learning_system.run_learning_cycle()
+
             # Reload config at the start of each cycle to get the latest settings
             current_config = load_config()
             if not current_config:
