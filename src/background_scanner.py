@@ -200,9 +200,9 @@ async def run_scanner(app: Application):
             max_opportunity_age_hours = trading_rules.get('max_opportunity_age_hours', 24)
 
             print(f"\n[{datetime.datetime.now()}] --- Running new scan cycle for symbols: {symbols_to_scan} ---")
-            user_id = app.bot_data.get('user_id')
+            user_id = current_config.get('telegram', {}).get('chat_id')
             if not user_id:
-                print("User ID not found, skipping.")
+                print("User ID not found in config.yaml, skipping cycle.")
                 await asyncio.sleep(10)
                 continue
 
