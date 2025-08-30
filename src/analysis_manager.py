@@ -2,7 +2,7 @@ import pandas as pd
 from typing import Dict, Any, Optional, List
 
 # Import utils and configs
-from src.utils.config_loader import config
+from src.utils.config_loader import load_config
 
 # Import strategy functions
 from src.strategies.h4_strategy import h4_long_term_strategy
@@ -25,6 +25,7 @@ class AnalysisManager:
             "final_decision": "REJECT",
             "decision_path": []
         }
+        config = load_config()
         self.min_rr = config.get('trading_rules', {}).get('min_rr_ratio', 2.0)
         self.min_confidence = config.get('trading_rules', {}).get('min_confidence_score', 70)
 

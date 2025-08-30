@@ -8,13 +8,15 @@ from src.bot_interface.handlers import (
     AWAITING_SYMBOL_TO_ADD
 )
 from src.background_scanner import run_scanner
-from src.utils.config_loader import config
+from src.utils.config_loader import load_config
 
 # --- Configuration ---
-TELEGRAM_TOKEN = config['telegram']['token']
 
 async def main() -> None:
     """Sets up and starts the Telegram bot with graceful shutdown."""
+    config = load_config()
+    TELEGRAM_TOKEN = config.get('telegram', {}).get('token')
+
     if not TELEGRAM_TOKEN:
         print("FATAL: TELEGRAM_TOKEN is not configured. Please check your .env file.")
         return

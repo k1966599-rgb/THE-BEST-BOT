@@ -1,7 +1,7 @@
 import pandas as pd
 from typing import List, Dict, Any, Optional, Tuple
 from src.elliott_wave_engine.core.wave_structure import WavePattern
-from src.utils.config_loader import config
+from src.utils.config_loader import load_config
 
 def get_fib_retracement(start_price: float, end_price: float) -> Dict[float, float]:
     """Calculates Fibonacci retracement levels for a given price move."""
@@ -46,6 +46,7 @@ def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: 
     """
     Calculates trade parameters, now including R:R and a confidence score.
     """
+    config = load_config()
     try:
         pattern_type = pattern.pattern_type.lower()
         points = pattern.points
