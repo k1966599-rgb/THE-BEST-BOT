@@ -12,6 +12,7 @@ from src.analysis_manager import AnalysisManager
 from src.trading import state_manager, trade_manager, trade_logger
 from src.trading.state_manager import load_notification_state, save_notification_state
 from src.data.bybit_client import BybitClient
+from src.learning_system import TradingLearningSystem
 
 # --- Constants are now loaded inside the scanner loop to ensure they are fresh ---
 
@@ -86,9 +87,8 @@ def get_analysis_notification(context: Dict[str, Any], notification_state: Dict[
     return None
 
 
-async def handle_trade_update(app: Application, user_id: int, event: Dict[str, Any], trade: Dict[str, Any]):
+async def handle_trade_update(app: Application, user_id: int, event: Dict[str, Any], trade: Dict[str, Any], learning_system: TradingLearningSystem):
     """Handles events from the trade manager, sends alerts, updates state, and logs completed trades."""
-    # This function remains the same
     event_type = event.get('event')
     symbol = event.get('symbol')
     trade_id = trade.get('id')
@@ -111,6 +111,7 @@ async def handle_trade_update(app: Application, user_id: int, event: Dict[str, A
             trade['status'] = 'CLOSED_TP'
             alert_text += "\nاكتملت جميع أهداف الصفقة بنجاح!"
             trade_logger.log_trade(trade, 'TP_FINAL_HIT')
+            learning_system.log_closed_trade(trade, event) # New learning system log
             state_manager.remove_trade(trade_id)
         else:
             state_manager.update_trade(trade)
@@ -118,6 +119,7 @@ async def handle_trade_update(app: Application, user_id: int, event: Dict[str, A
         alert_text = f"❌ **تم ضرب وقف الخسارة | {symbol}** ❌"
         trade['status'] = 'CLOSED_SL'
         trade_logger.log_trade(trade, 'SL_HIT')
+        learning_system.log_closed_trade(trade, event) # New learning system log
         state_manager.remove_trade(trade_id)
     if alert_text:
         await app.bot.send_message(chat_id=user_id, text=alert_text, parse_mode='Markdown')
@@ -128,9 +130,8 @@ async def handle_trade_update(app: Application, user_id: int, event: Dict[str, A
         except Exception as e:
             print(f"Could not edit message {message_id} for trade {trade_id}: {e}")
 
-async def monitor_active_trades(app: Application, user_id: int):
+async def monitor_active_trades(app: Application, user_id: int, learning_system: TradingLearningSystem):
     """Loads active trades, checks their status, and handles updates."""
-    # This function remains the same
     active_trades = state_manager.load_active_trades()
     if not active_trades: return
     print(f"--- Monitoring {len(active_trades)} active trade(s) ---")
@@ -146,7 +147,7 @@ async def monitor_active_trades(app: Application, user_id: int):
             continue
         update_event = trade_manager.manage_active_trade(trade, current_price)
         if update_event:
-            await handle_trade_update(app, user_id, update_event, trade)
+            await handle_trade_update(app, user_id, update_event, trade, learning_system)
 
 def get_today_trade_count() -> int:
     """Counts how many trades were sent today."""
@@ -177,6 +178,7 @@ def cleanup_expired_deferred_setups(max_age_hours: int):
 async def run_scanner(app: Application):
     """The main background task."""
     print("Background scanner started.")
+    learning_system = TradingLearningSystem()
     # Symbols to scan are now loaded inside the loop to allow for dynamic updates.
 
     while True:
@@ -277,7 +279,7 @@ async def run_scanner(app: Application):
                         await app.bot.send_message(chat_id=user_id, text="✅ دورة فحص مكتملة. لم يتم رصد أي فرص جديدة حاليًا.")
 
             # --- Part 3: Monitor Existing Active Trades ---
-            await monitor_active_trades(app, user_id)
+            await monitor_active_trades(app, user_id, learning_system)
 
             print(f"--- Scan cycle complete. Waiting {scan_interval_seconds} seconds. ---")
             await asyncio.sleep(scan_interval_seconds)
