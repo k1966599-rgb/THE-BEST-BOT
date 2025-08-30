@@ -1,4 +1,5 @@
 import pandas as pd
+import json
 from typing import Dict, Any, Optional, List
 
 # Import utils and configs
@@ -13,6 +14,8 @@ from src.strategies.m3_strategy import m3_scalp_strategy
 from src.trading.trade_proposer import define_trade_setup
 from src.elliott_wave_engine.core.wave_structure import WaveScenario
 
+ACCEPT_SCORE_THRESHOLD = 100.0 # Define a threshold for accepting a trade
+
 class AnalysisManager:
     """
     Orchestrates a hierarchical, multi-timeframe analysis based on Elliott Wave theory.
@@ -26,8 +29,20 @@ class AnalysisManager:
             "decision_path": []
         }
         config = load_config()
-        self.min_rr = config.get('trading_rules', {}).get('min_rr_ratio', 2.0)
-        self.min_confidence = config.get('trading_rules', {}).get('min_confidence_score', 70)
+        self.min_rr = config.get('trading_rules', {}).get('min_rr_ratio', 1.5)
+        self.min_confidence = config.get('trading_rules', {}).get('min_confidence_score', 60)
+
+        # Load adaptive weights
+        try:
+            with open("strategy_weights.json", "r") as f:
+                self.weights = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Fallback to default weights if file is missing or corrupt
+            self.weights = {
+                "timeframes": {"4h": 1.0, "1h": 1.0, "15m": 1.0},
+                "indicators": {"stoch_rsi": 1.0, "macd": 1.0},
+                "rules": {"rr": 1.0, "confidence": 1.0}
+            }
 
     def _run_phase(self, phase_name: str, tf_str: str, strategy_func, htf_context: Optional[dict] = None) -> bool:
         """Generic function to run a phase of the analysis."""
@@ -97,26 +112,40 @@ class AnalysisManager:
         return True
 
     def _confirm_entry_conditions(self) -> None:
-        """Final confirmation using rules, 5m and 3m data."""
-        self.context['decision_path'].append("Confirm(Rules/5m/3m)")
-        trade_setup = self.context['final_trade_setup']
+        """
+        Final confirmation using a weighted scoring system based on adaptive weights.
+        """
+        self.context['decision_path'].append("Confirm(WeightedScore)")
+        trade_setup = self.context.get('final_trade_setup')
+        if not trade_setup: return
 
-        # --- Rule Check: R:R and Confidence ---
-        if trade_setup.get('rr_ratio', 0) < self.min_rr:
-            self.context['decision_path'].append(f"->REJECT:RR_low({trade_setup.get('rr_ratio', 0)})")
+        total_score = 0.0
+
+        # --- Score Component 1: Base Confidence Score ---
+        confidence_score = trade_setup.get('confidence_score', 0)
+        if confidence_score < self.min_confidence:
+            self.context['decision_path'].append(f"->REJECT:Conf_low({confidence_score})")
             return
-        self.context['decision_path'].append(f"->OK:RR({trade_setup.get('rr_ratio', 0)})")
+        # Normalize score to be out of 100
+        normalized_confidence = (confidence_score / 100.0) * 100
+        total_score += normalized_confidence * self.weights.get('rules', {}).get('confidence', 1.0)
+        self.context['decision_path'].append(f"->OK:Conf({confidence_score:.0f})_Score(+{total_score:.1f})")
 
-        if trade_setup.get('confidence_score', 0) < self.min_confidence:
-            self.context['decision_path'].append(f"->REJECT:Conf_low({trade_setup.get('confidence_score', 0)})")
+        # --- Score Component 2: Risk/Reward Ratio ---
+        rr_ratio = trade_setup.get('rr_ratio', 0)
+        if rr_ratio < self.min_rr:
+            self.context['decision_path'].append(f"->REJECT:RR_low({rr_ratio})")
             return
-        self.context['decision_path'].append(f"->OK:Conf({trade_setup.get('confidence_score', 0)})")
+        # Give a bonus for higher R:R, capped at a reasonable level
+        rr_bonus = min(rr_ratio, 5.0) * 5 # e.g., 2.0 R:R gives 10 points
+        total_score += rr_bonus * self.weights.get('rules', {}).get('rr', 1.0)
+        self.context['decision_path'].append(f"->OK:RR({rr_ratio:.1f})_Score(+{total_score:.1f})")
 
-        # Phase 4 & 5: LTF Confirmation (3m) - More Aggressive
-        # The 5m bullish candle check has been removed to allow for more opportunities.
+        # --- Score Component 3: LTF Indicator Confirmation ---
         _, data_3m = m3_scalp_strategy(self.symbol)
         if data_3m.empty: return
 
+        # Price in zone check remains a hard gate
         current_price = data_3m['close'].iloc[-1]
         entry_zone = trade_setup['entry_zone']
         if not (entry_zone[1] <= current_price <= entry_zone[0]):
@@ -124,20 +153,28 @@ class AnalysisManager:
             self.context['final_decision'] = "DEFER"
             return
 
-        # Relaxed Indicator Check: We now accept if EITHER StochRSI or MACD is bullish.
         latest_indicators = data_3m.iloc[-1]
         stoch_k = latest_indicators.get('STOCHRSIk_14_14_3_3', 50)
         stoch_d = latest_indicators.get('STOCHRSId_14_14_3_3', 50)
         macd_hist = latest_indicators.get('MACDh_12_26_9', 0)
 
-        stoch_is_bullish = stoch_k > stoch_d
-        macd_is_bullish = macd_hist > 0
+        indicator_score = 0
+        if stoch_k > stoch_d:
+            indicator_score += 50 * self.weights.get('indicators', {}).get('stoch_rsi', 1.0)
+            self.context['decision_path'].append("->OK:Stoch")
+        if macd_hist > 0:
+            indicator_score += 50 * self.weights.get('indicators', {}).get('macd', 1.0)
+            self.context['decision_path'].append("->OK:MACD")
 
-        if stoch_is_bullish or macd_is_bullish:
-            self.context['decision_path'].append("->ACCEPT:Indicator_OR_Trigger")
+        total_score += indicator_score
+        self.context['decision_path'].append(f"->IndiScore({indicator_score:.0f})_Total({total_score:.1f})")
+
+        # --- Final Decision ---
+        if total_score >= ACCEPT_SCORE_THRESHOLD:
+            self.context['decision_path'].append("->ACCEPT:ScoreSufficient")
             self.context['final_decision'] = "ACCEPT"
         else:
-            self.context['decision_path'].append("->DEFER:Indicators_still_weak")
+            self.context['decision_path'].append("->DEFER:ScoreInsufficient")
             self.context['final_decision'] = "DEFER"
 
     def run_hierarchical_analysis(self) -> None:
