@@ -1,53 +1,37 @@
 import pandas as pd
 from typing import List, Dict, Any, Optional
-from src.trading.risk_management import calculate_fibonacci_trade_parameters
+from src.trading.risk_management import calculate_trade_parameters
 from src.elliott_wave_engine.core.wave_structure import WaveScenario
 
 def define_trade_setup(scenarios: List[WaveScenario], historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
-    Defines an ideal trade setup based on Fibonacci analysis of a wave pattern.
-    It does NOT check the current price; it only defines the setup parameters.
+    Identifies the best wave scenario and calculates a potential trade setup.
+
+    This function now acts as a high-level orchestrator, delegating all complex
+    calculations to the `risk_management` module. Its main responsibilities are:
+    1. Select the most confident wave scenario.
+    2. Call the appropriate calculator for the identified pattern.
+    3. Return the calculated trade setup or an analysis message.
     """
     if not scenarios:
         return None
 
-    # We only propose a trade based on the primary pattern of the most confident scenario.
-    primary_pattern = scenarios[0].primary_pattern
-    pattern_type_lower = primary_pattern.pattern_type.lower()
+    # We base the trade proposal on the most confident scenario identified by the engine.
+    most_confident_scenario = scenarios[0]
+    primary_pattern = most_confident_scenario.primary_pattern
 
-    # --- Main Logic: Check for Bullish Patterns to Define a Setup ---
-    # As per user request, we are only defining setups for spot (long trades).
-    # As per user request, we are only defining setups for spot (long trades).
-    if "bullish" in pattern_type_lower or "up" in pattern_type_lower or "impulse" in pattern_type_lower:
+    # Delegate all calculation logic to the specialized function
+    trade_setup = calculate_trade_parameters(primary_pattern, historical_data)
 
-        # All the complex calculation is now in one place.
-        trade_setup = calculate_fibonacci_trade_parameters(primary_pattern, historical_data)
-
-        if not trade_setup:
-            return None # The pattern was not suitable for a fib-based trade.
-
-        # Add pattern context to the trade setup
-        trade_setup['type'] = "LONG"
-        trade_setup['pattern_type'] = primary_pattern.pattern_type
-        # Overwrite the generic reason with a more specific one if needed
-        trade_setup['reason'] = f"نمط {primary_pattern.pattern_type} مع انتظار تصحيح فيبوناتشي."
-
+    if trade_setup:
+        # The setup is valid and meets all criteria (e.g., R:R ratio)
         return trade_setup
-
-    # --- Contextual Logic: Identify other patterns but do not trade ---
-    elif "bearish" in pattern_type_lower or "down" in pattern_type_lower:
+    else:
+        # If no valid trade setup could be calculated, return a contextual analysis message.
+        # This helps in debugging and understanding why a trade was not proposed.
+        pattern_type = primary_pattern.pattern_type
         return {
             "type": "Analysis",
-            "reason": f"تم رصد نمط هابط ({primary_pattern.pattern_type}).",
-            "details": "لن يتم اقتراح صفقة بيع حسب الإعدادات."
+            "reason": f"تم رصد نمط ({pattern_type}) لكنه لم يستوفِ شروط الصفقة.",
+            "details": "قد يكون السبب نسبة مخاطرة/عائد غير كافية، أو أن النمط غير مكتمل."
         }
-
-    elif "triangle" in pattern_type_lower or "flat" in pattern_type_lower:
-        return {
-            "type": "Analysis",
-            "reason": f"تم رصد نمط تصحيحي جانبي ({primary_pattern.pattern_type}).",
-            "details": "هذه الأنماط تشير إلى فترة حيرة في السوق."
-        }
-
-    # If the pattern is not one of the recognized types, ignore it for now.
-    return None
