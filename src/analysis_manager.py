@@ -70,6 +70,10 @@ class AnalysisManager:
                 self.context['decision_path'].append("->MATCH:HTF_Corr/LTF_Imp")
                 match_found = True
 
+            elif "impulse" in htf_type and "impulse" in ltf_type:
+                self.context['decision_path'].append("->MATCH:HTF_Imp/LTF_Imp")
+                match_found = True
+
             if match_found:
                 # New explicit stage marker for alignment
                 self.context['decision_path'].append(f"STAGE_PASSED:ALIGN_{tf_str}")
