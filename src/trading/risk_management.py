@@ -1,133 +1,199 @@
 import pandas as pd
-from typing import List, Dict, Any, Optional, Tuple
+import pandas_ta as ta
+from typing import Dict, Any, Optional, List, Tuple
 from src.elliott_wave_engine.core.wave_structure import WavePattern
 from src.utils.config_loader import load_config
 
-def get_fib_retracement(start_price: float, end_price: float) -> Dict[float, float]:
-    """Calculates Fibonacci retracement levels for a given price move."""
-    height = end_price - start_price
-    if height == 0: return {}
-    return {
-        level: end_price - level * height
-        for level in [0.382, 0.5, 0.618, 0.786]
-    }
+# --- Configuration ---
+config = load_config()
+risk_config = config.get('risk', {})
+ACCOUNT_SIZE = risk_config.get('account_size', 10000)
+RISK_PER_TRADE = risk_config.get('risk_per_trade', 0.01)
+ATR_MULTIPLIER = risk_config.get('atr_multiplier', 1.5) # New config for ATR SL
+MIN_RR_RATIO = config.get('trading_rules', {}).get('min_rr_ratio', 1.5)
 
-def get_fib_extension(p_start: float, p_end: float, p_correction: float) -> Dict[float, float]:
-    """Calculates Fibonacci extension levels."""
-    height = p_end - p_start
-    if height == 0: return {}
-    return {
-        level: p_correction + level * height
-        for level in [1.0, 1.272, 1.618, 2.0, 2.618]
-    }
+def calculate_atr(historical_data: pd.DataFrame, period: int = 14) -> float:
+    """Calculates the Average True Range (ATR) for the given data."""
+    if historical_data is None or historical_data.empty:
+        return 0.0
+    # Ensure columns are named correctly for pandas_ta
+    data = historical_data.copy()
+    data.rename(columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True, errors='ignore')
+    atr = data.ta.atr(length=period)
+    return atr.iloc[-1] if atr is not None and not atr.empty else 0.0
 
-def _calculate_rr_ratio(entry: float, stop_loss: float, targets: List[float]) -> Optional[float]:
-    """Calculates the Risk/Reward ratio for the first target."""
-    if not targets or (entry - stop_loss) == 0:
+def _calculate_position_size(entry: float, stop_loss: float, trade_type: str) -> Optional[float]:
+    """Calculates the position size based on risk parameters."""
+    if not ACCOUNT_SIZE or not RISK_PER_TRADE:
         return None
 
-    reward = targets[0] - entry
-    risk = entry - stop_loss
+    dollar_risk = ACCOUNT_SIZE * RISK_PER_TRADE
+
+    if trade_type.upper() == "LONG":
+        risk_per_asset = entry - stop_loss
+    elif trade_type.upper() == "SHORT":
+        risk_per_asset = stop_loss - entry
+    else:
+        return None
+
+    return dollar_risk / risk_per_asset if risk_per_asset > 0 else None
+
+def _calculate_rr_ratio(entry: float, stop_loss: float, targets: List[float], trade_type: str) -> Optional[float]:
+    """Calculates the Risk/Reward ratio for the first target."""
+    if not targets:
+        return None
+
+    first_target = targets[0]
+
+    if trade_type.upper() == "LONG":
+        reward = first_target - entry
+        risk = entry - stop_loss
+    elif trade_type.upper() == "SHORT":
+        reward = entry - first_target
+        risk = stop_loss - entry
+    else:
+        return None
+
     return round(reward / risk, 2) if risk > 0 else None
 
 def _calculate_confidence_score(pattern: WavePattern) -> float:
+    """Calculates a confidence score based on the pattern's quality."""
+    return round(pattern.confidence_score, 2)
+
+def _get_fib_retracement(start: float, end: float) -> Dict[float, float]:
+    """Calculates Fibonacci retracement levels for a move."""
+    height = end - start
+    return {level: end - level * height for level in [0.382, 0.5, 0.618]}
+
+def _get_fib_extension(p_start: float, p_end: float, p_retrace_end: float) -> Dict[float, float]:
+    """Calculates Fibonacci extension levels from the end of a retracement."""
+    height = p_end - p_start
+    return {level: p_retrace_end + level * height for level in [1.0, 1.272, 1.618]}
+
+def calculate_trade_parameters(pattern: WavePattern, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
     """
-    Calculates a confidence score for the trade setup.
-    For now, it's primarily based on the underlying Elliott Wave pattern's confidence.
+    Main function to calculate trade parameters for a given wave pattern.
+    It identifies the pattern type and calls the appropriate setup calculator.
     """
-    # Base score is the pattern's confidence from the engine's guideline checks
-    base_score = pattern.confidence_score
-
-    # Future enhancements could add points for other confluences (e.g., proximity to key moving averages, etc.)
-
-    return round(base_score, 2)
-
-def calculate_fibonacci_trade_parameters(pattern: WavePattern, historical_data: pd.DataFrame) -> Optional[Dict[str, Any]]:
-    """
-    Calculates trade parameters, now including R:R and a confidence score.
-    """
-    config = load_config()
-    try:
-        pattern_type = pattern.pattern_type.lower()
-        points = pattern.points
-
-        # Proactive strategy: Trade Wave 5 after a completed Wave 4
-        if "impulse" in pattern_type and len(points) == 5:
-            p0, p1, p2, p3, p4 = points
-
-            # Elliott Wave Rule: Wave 4 must not enter the price territory of Wave 1.
-            if p4.price <= p1.price:
-                return None
-
-            # Entry is set in a zone around the end of Wave 4, anticipating the start of Wave 5.
-            entry_price = p4.price
-            entry_zone_top = p4.price * 1.005 # 0.5% buffer above P4
-            entry_zone_bottom = p4.price * 0.995 # 0.5% buffer below P4
-
-            # Stop loss is placed at the high of wave 1. This is the invalidation point for the pattern.
-            stop_loss_price = p1.price
-
-            # Targets are calculated using common Fibonacci extensions of Wave 1's height, projected from the end of Wave 4.
-            wave_1_height = p1.price - p0.price
-            targets = {
-                level: p4.price + level * wave_1_height
-                for level in [0.618, 1.0, 1.618]
-            }
-            reason = f"توقع استكمال الموجة الدافعة (الموجة 5)"
-
-        elif "impulse" in pattern_type and len(points) >= 6:
-            p0, _, _, _, _, p5 = points
-            retracements = get_fib_retracement(p0.price, p5.price)
-            entry_zone_top = retracements.get(0.5)
-            entry_zone_bottom = retracements.get(0.618)
-            if entry_zone_top is None or entry_zone_bottom is None: return None
-            entry_price = entry_zone_bottom
-            stop_loss_price = p0.price
-            targets = get_fib_extension(p0.price, p5.price, entry_price)
-            reason = f"انتظار تصحيح للموجة الدافعة"
-        elif any(corr in pattern_type for corr in ["zigzag", "flat", "triangle"]):
-            if len(points) < 4: return None
-            p_correction_start = points[0]
-            p_breakout_level = points[2] if "zigzag" in pattern_type or "flat" in pattern_type else points[3] # B or D
-            p_correction_end = points[3] if "zigzag" in pattern_type or "flat" in pattern_type else points[5] # C or E
-            entry_price = p_breakout_level.price
-            stop_loss_price = p_correction_end.price
-            targets = get_fib_extension(p_correction_start.price, p_breakout_level.price, p_correction_end.price)
-            reason = f"الدخول بعد انتهاء نمط تصحيحي"
-        else:
-            return None
-
-        if stop_loss_price >= entry_price: return None
-
-        final_targets = sorted(list(targets.values()))
-        if not final_targets: return None
-
-        # --- NEW: Calculate R:R and Confidence ---
-        rr_ratio = _calculate_rr_ratio(entry_price, stop_loss_price, final_targets)
-        confidence_score = _calculate_confidence_score(pattern)
-
-        # --- Position Sizing ---
-        account_size = config.get('risk', {}).get('account_size')
-        risk_per_trade = config.get('risk', {}).get('risk_per_trade')
-        position_size = None
-        if account_size and risk_per_trade:
-            dollar_risk = account_size * risk_per_trade
-            risk_per_asset = entry_price - stop_loss_price
-            if risk_per_asset > 0:
-                position_size = dollar_risk / risk_per_asset
-
-        return {
-            "entry_zone": (entry_zone_top, entry_zone_bottom) if "impulse" in pattern_type else (entry_price, entry_price),
-            "entry": entry_price,
-            "stop_loss": stop_loss_price,
-            "targets": final_targets,
-            "position_size": position_size,
-            "reason": f"{reason} ({pattern.pattern_type})",
-            "pattern_type": pattern.pattern_type,
-            "rr_ratio": rr_ratio,
-            "confidence_score": confidence_score
-        }
-
-    except (IndexError, KeyError, TypeError, AttributeError) as e:
-        print(f"DEBUG: Could not calculate fib parameters for pattern {pattern.pattern_type} due to structure error: {e}")
+    pattern_type = pattern.pattern_type.lower()
+    atr_value = calculate_atr(historical_data)
+    if atr_value == 0:
+        print(f"WARNING: ATR is zero for {pattern.symbol}. Cannot calculate dynamic stop loss.")
         return None
+
+    # --- Impulse Wave Setups (Anticipating a correction) ---
+    if "bullish impulse" in pattern_type and len(pattern.points) >= 6:
+        return _calculate_impulse_wave_long_setup(pattern, atr_value)
+    if "bearish impulse" in pattern_type and len(pattern.points) >= 6:
+        return _calculate_impulse_wave_short_setup(pattern, atr_value)
+
+    # --- Zigzag Corrective Wave Setups (Anticipating a reversal) ---
+    if "bullish zigzag" in pattern_type and len(pattern.points) >= 4:
+        return _calculate_zigzag_long_setup(pattern, atr_value)
+    if "bearish zigzag" in pattern_type and len(pattern.points) >= 4:
+        return _calculate_zigzag_short_setup(pattern, atr_value)
+
+    return None
+
+def _build_trade_dict(
+    trade_type: str, entry: float, stop_loss: float, targets: List[float],
+    pattern: WavePattern, reason: str, entry_zone: Tuple[float, float]
+) -> Optional[Dict[str, Any]]:
+    """Helper function to assemble the final trade dictionary."""
+
+    # Validate that targets are logical
+    if trade_type == "LONG" and all(t <= entry for t in targets): return None
+    if trade_type == "SHORT" and all(t >= entry for t in targets): return None
+
+    position_size = _calculate_position_size(entry, stop_loss, trade_type)
+    rr_ratio = _calculate_rr_ratio(entry, stop_loss, targets, trade_type)
+    confidence_score = _calculate_confidence_score(pattern)
+
+    if rr_ratio is None or rr_ratio < MIN_RR_RATIO:
+        return None
+
+    return {
+        "type": trade_type,
+        "entry": entry,
+        "stop_loss": stop_loss,
+        "targets": targets,
+        "position_size": position_size,
+        "reason": reason,
+        "pattern_type": pattern.pattern_type,
+        "rr_ratio": rr_ratio,
+        "confidence_score": confidence_score,
+        "entry_zone": entry_zone
+    }
+
+def _calculate_impulse_wave_long_setup(pattern: WavePattern, atr_value: float) -> Optional[Dict[str, Any]]:
+    """Calculates a LONG trade setup after a 5-wave impulse, anticipating a retracement."""
+    p0, _, _, _, _, p5 = pattern.points
+
+    # Entry Zone based on Fibonacci retracement of the whole impulse
+    retracements = _get_fib_retracement(p0.price, p5.price)
+    entry_zone_top = retracements.get(0.382)
+    entry_zone_bottom = retracements.get(0.618)
+    if entry_zone_top is None or entry_zone_bottom is None: return None
+
+    entry = entry_zone_bottom # Enter at the deeper retracement level
+
+    # SL is placed below the start of the impulse (p0) + ATR buffer
+    stop_loss = p0.price - (ATR_MULTIPLIER * atr_value)
+
+    # Targets are extensions from the bottom of the retracement (assumed to be entry price)
+    targets = list(_get_fib_extension(p0.price, p5.price, entry).values())
+    targets = sorted([t for t in targets if t > entry])
+
+    return _build_trade_dict("LONG", entry, stop_loss, targets, pattern, "Buy on impulse retracement", (entry_zone_top, entry_zone_bottom))
+
+def _calculate_impulse_wave_short_setup(pattern: WavePattern, atr_value: float) -> Optional[Dict[str, Any]]:
+    """Calculates a SHORT trade setup after a 5-wave bearish impulse."""
+    p0, _, _, _, _, p5 = pattern.points
+
+    retracements = _get_fib_retracement(p5.price, p0.price) # Reversed for short
+    entry_zone_top = retracements.get(0.618)
+    entry_zone_bottom = retracements.get(0.382)
+    if entry_zone_top is None or entry_zone_bottom is None: return None
+
+    entry = entry_zone_bottom # Enter at the lower retracement
+
+    stop_loss = p0.price + (ATR_MULTIPLIER * atr_value)
+
+    # Targets are extensions from the top of the retracement
+    height = p0.price - p5.price
+    targets = sorted([entry - level * height for level in [1.0, 1.272, 1.618]], reverse=True)
+    targets = [t for t in targets if t < entry]
+
+    return _build_trade_dict("SHORT", entry, stop_loss, targets, pattern, "Sell on bearish impulse retracement", (entry_zone_top, entry_zone_bottom))
+
+def _calculate_zigzag_long_setup(pattern: WavePattern, atr_value: float) -> Optional[Dict[str, Any]]:
+    """Calculates a LONG trade at the end of a bullish C-wave of a Zigzag."""
+    pA, pB, pC = pattern.points[1:4] # A, B, C points
+
+    entry = pC.price
+
+    # Stop loss below the end of C-wave + ATR buffer
+    stop_loss = pC.price - (ATR_MULTIPLIER * atr_value)
+
+    # Targets are extensions of the A-wave, projected from the B-wave
+    height = pA.price - pattern.points[0].price
+    targets = sorted([pB.price + level * height for level in [0.618, 1.0, 1.618]])
+    targets = [t for t in targets if t > entry]
+
+    return _build_trade_dict("LONG", entry, stop_loss, targets, pattern, "Buy after bullish Zigzag completion", (entry, entry))
+
+def _calculate_zigzag_short_setup(pattern: WavePattern, atr_value: float) -> Optional[Dict[str, Any]]:
+    """Calculates a SHORT trade at the end of a bearish C-wave of a Zigzag."""
+    pA, pB, pC = pattern.points[1:4] # A, B, C points
+
+    entry = pC.price
+
+    # Stop loss above the end of C-wave + ATR buffer
+    stop_loss = pC.price + (ATR_MULTIPLIER * atr_value)
+
+    # Targets are extensions of the A-wave, projected from the B-wave
+    height = pattern.points[0].price - pA.price
+    targets = sorted([pB.price - level * height for level in [0.618, 1.0, 1.618]], reverse=True)
+    targets = [t for t in targets if t < entry]
+
+    return _build_trade_dict("SHORT", entry, stop_loss, targets, pattern, "Sell after bearish Zigzag completion", (entry, entry))
