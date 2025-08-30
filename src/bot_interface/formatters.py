@@ -1,7 +1,7 @@
 import math
 from typing import List
 from src.elliott_wave_engine.core.wave_structure import WaveScenario, WavePattern
-from src.utils.config_loader import config
+from src.utils.config_loader import load_config
 
 def _get_dynamic_price_format(price: float) -> str:
     """
@@ -92,6 +92,7 @@ def format_trade_alert(trade_signal: dict, interval_str: str, symbol: str, scena
     """
     Formats a trade signal or an analysis event into a concise alert message.
     """
+    config = load_config()
     if trade_signal.get('type') == "Analysis":
         pattern = trade_signal.get('pattern')
         details = trade_signal.get('details', 'تم رصد نمط هام.')
