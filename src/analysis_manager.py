@@ -75,6 +75,22 @@ class AnalysisManager:
             self.context['decision_path'].append("->REJECT:NoLongSetup")
             return False
 
+        # --- Create a snapshot of the analysis context for logging ---
+        analysis_snapshot = {}
+        for tf in ['4h', '1h', '15m']:
+            if f'{tf}_scenarios' in self.context and f'{tf}_data' in self.context:
+                # Store the primary wave pattern
+                analysis_snapshot[f'{tf}_pattern'] = self.context[f'{tf}_scenarios'][0].primary_pattern.to_dict()
+                # Store the latest row of indicator data
+                # Convert any non-serializable types to string
+                latest_indicators = self.context[f'{tf}_data'].iloc[-1].to_dict()
+                for key, value in latest_indicators.items():
+                    if not isinstance(value, (int, float, str, bool)) and value is not None:
+                        latest_indicators[key] = str(value)
+                analysis_snapshot[f'{tf}_indicators'] = latest_indicators
+
+        trade_setup['analysis_snapshot'] = analysis_snapshot
+
         self.context['final_trade_setup'] = trade_setup
         self.context['decision_path'].append("->OK:SetupGenerated")
         self.context['decision_path'].append("STAGE_PASSED:SETUP_GENERATED")

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 @dataclass
 class WavePoint:
@@ -49,6 +49,16 @@ class WavePattern:
                     # Guidelines now contribute to the remaining 40 points
                     score += (weight / total_possible_guideline_score) * 40.0
         self.confidence_score = min(score, 100.0)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serializes the key fields of the wave pattern to a dictionary."""
+        return {
+            "pattern_type": self.pattern_type,
+            "confidence_score": self.confidence_score,
+            "rules_passed": [r.name for r in self.rules_results if r.passed],
+            "rules_failed": [r.name for r in self.rules_results if not r.passed],
+            "guidelines_passed": [g.name for g in self.guidelines_results if g.passed],
+        }
 
 @dataclass
 class ComplexWavePattern(WavePattern):
