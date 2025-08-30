@@ -96,15 +96,8 @@ class AnalysisManager:
             return
         self.context['decision_path'].append(f"->OK:Conf({trade_setup.get('confidence_score', 0)})")
 
-        # Phase 4: 5m Confirmation
-        _, data_5m = m5_scalp_strategy(self.symbol)
-        if data_5m.empty or data_5m.iloc[-1]['close'] <= data_5m.iloc[-1]['open']:
-            self.context['decision_path'].append("->DEFER:5m_not_bullish")
-            self.context['final_decision'] = "DEFER"
-            return
-        self.context['decision_path'].append("->OK:5m_bullish")
-
-        # Phase 5: 3m Entry Trigger
+        # Phase 4 & 5: LTF Confirmation (3m) - More Aggressive
+        # The 5m bullish candle check has been removed to allow for more opportunities.
         _, data_3m = m3_scalp_strategy(self.symbol)
         if data_3m.empty: return
 
@@ -115,14 +108,20 @@ class AnalysisManager:
             self.context['final_decision'] = "DEFER"
             return
 
+        # Relaxed Indicator Check: We now accept if EITHER StochRSI or MACD is bullish.
         latest_indicators = data_3m.iloc[-1]
         stoch_k = latest_indicators.get('STOCHRSIk_14_14_3_3', 50)
+        stoch_d = latest_indicators.get('STOCHRSId_14_14_3_3', 50)
         macd_hist = latest_indicators.get('MACDh_12_26_9', 0)
-        if stoch_k > latest_indicators.get('STOCHRSId_14_14_3_3', 50) and macd_hist > 0:
-            self.context['decision_path'].append("->ACCEPT")
+
+        stoch_is_bullish = stoch_k > stoch_d
+        macd_is_bullish = macd_hist > 0
+
+        if stoch_is_bullish or macd_is_bullish:
+            self.context['decision_path'].append("->ACCEPT:Indicator_OR_Trigger")
             self.context['final_decision'] = "ACCEPT"
         else:
-            self.context['decision_path'].append("->DEFER:Indicators_weak")
+            self.context['decision_path'].append("->DEFER:Indicators_still_weak")
             self.context['final_decision'] = "DEFER"
 
     def run_hierarchical_analysis(self) -> None:
