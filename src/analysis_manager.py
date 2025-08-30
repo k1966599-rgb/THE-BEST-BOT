@@ -52,10 +52,20 @@ class AnalysisManager:
             self.context['decision_path'].append("->REJECT:NoPatterns")
             return False
 
+        primary_pattern = scenarios[0].primary_pattern
+
+        # --- Quality Score Filter ---
+        # As per user request, filter out low-quality patterns early.
+        quality_score = primary_pattern.quality_score
+        # User specified < 2 for scalping frames. We'll use >= 1 as a general baseline for now.
+        if quality_score < 1:
+            self.context['decision_path'].append(f"->REJECT:LowQuality({quality_score})")
+            return False
+
         self.context[f'{tf_str}_scenarios'] = scenarios
         self.context[f'{tf_str}_data'] = data
-        ltf_type = scenarios[0].primary_pattern.pattern_type.lower()
-        self.context['decision_path'].append(f"->OK:{ltf_type[:5]}")
+        ltf_type = primary_pattern.pattern_type.lower()
+        self.context['decision_path'].append(f"->OK:{ltf_type[:5]}_Q({quality_score})")
 
         # New explicit stage marker
         self.context['decision_path'].append(f"STAGE_PASSED:{tf_str}")

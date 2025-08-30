@@ -76,13 +76,12 @@ class ElliottWaveEngine:
                 logging.warning(f"Invalid ATR ({median_atr}) for {self.symbol}/{self.timeframe}. Falling back to price-percent prominence.")
             else:
                 # Multipliers adjusted slightly to account for median being generally lower than mean
-                # Further reduced multipliers for even higher sensitivity.
                 prominence_map = {
-                    '4h':  median_atr * 1.2,
-                    '1h':  median_atr * 1.0,
-                    '15m': median_atr * 0.8,
-                    '5m':  median_atr * 0.6,
-                    '3m':  median_atr * 0.5,
+                    '4h':  median_atr * 10.0,
+                    '1h':  median_atr * 7.0,
+                    '15m': median_atr * 4.0,
+                    '5m':  median_atr * 3.0,
+                    '3m':  median_atr * 2.5,
                 }
                 prominence = prominence_map.get(str(self.timeframe), median_atr * 3.0)
 
