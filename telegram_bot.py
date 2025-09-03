@@ -4,113 +4,114 @@ from datetime import datetime
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# استيراد الإعدادات
 from config import get_config
 
-# إعداد تسجيل الدخول (Logging) لتتبع أداء البوت
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
-logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# إدارة حالة البوت (بشكل بسيط في هذه المرحلة)
 bot_state = {"is_active": True}
 
-# --- وظائف بناء الرسائل والأزرار ---
-
 def get_keyboard() -> InlineKeyboardMarkup:
-    """إنشاء لوحة الأزرار التفاعلية"""
+    """Creates the interactive keyboard with the updated button text."""
     keyboard = [
         [
             InlineKeyboardButton("▶️ تشغيل", callback_data="start_bot"),
             InlineKeyboardButton("⏹️ إيقاف", callback_data="stop_bot"),
         ],
-        [InlineKeyboardButton("🔍 تحليل عملة", callback_data="analyze")],
+        [InlineKeyboardButton("🔍 تحليل", callback_data="analyze")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def get_start_message_text() -> str:
-    """إنشاء نص رسالة البداية"""
+    """Creates the new, elaborate start message text."""
+    config = get_config()
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    status = "يعمل" if bot_state["is_active"] else "متوقف"
+    status = "🟢 متصل وجاهز للعمل" if bot_state["is_active"] else "🔴 متوقف"
+    platform = config['trading'].get('EXCHANGE_ID', 'N/A').upper()
 
     text = (
-        "💎 **THE BEST BOT** 💎\n"
-        f"*{current_time}*\n\n"
-        f"**حالة البوت:** {status}\n\n"
-        "--- *الشروط* ---\n"
-        "هذا البوت مخصص للتحليل الفني فقط ولا يعتبر نصيحة استثمارية. "
-        "استخدم المعلومات على مسؤوليتك الخاصة."
+        "╔═══════════════════════════════════════╗\n"
+        "║            💎 THE BEST BOT 💎           ║\n"
+        "║         🎯 نظام التحليل الفني المتقدم 🎯         ║\n"
+        "╚═══════════════════════════════════════╝\n\n"
+        f"🕐 **التوقيت:** {current_time}\n"
+        f"📶 **حالة النظام:** {status}\n"
+        f"🌐 **المنصة:** 🏛️ {platform} Exchange\n\n"
+        "═══════════════════════════════════════\n\n"
+        "📋 **الخدمات المتوفرة:**\n\n"
+        "🔍 **التحليل الفني الشامل** ⚡\n"
+        "   💰 تحليل أكبر 20 عملة رقمية\n"
+        "   ⏰ 7 إطارات زمنية مختلفة\n"
+        "   📈 مؤشرات فنية متقدمة\n\n"
+        "📊 **أدوات التحليل:** 🛠️\n"
+        "   🌟 نسب فيبوناتشي\n"
+        "   🔴 الدعوم والمقاومات\n"
+        "   📉 القنوات السعرية\n"
+        "   🏛️ النماذج الكلاسيكية\n"
+        "   🎯 مناطق العرض والطلب\n\n"
+        "🎯 **التوصيات الذكية:** 🧠\n"
+        "   ✅ نقاط الدخول المثالية\n"
+        "   🛑 مستويات وقف الخسارة\n"
+        "   💵 أهداف الربح المحسوبة\n"
+        "   ⚖️ إدارة المخاطر\n\n"
+        "═══════════════════════════════════════\n\n"
+        "🚀 **البوت جاهز للاستخدام** 🤖\n"
+        "📱 استخدم الأزرار أدناه للتفاعل مع النظام 👇\n\n"
+        "💡 **نصيحة:** 📝 للحصول على أفضل النتائج،\n"
+        "راجع التحليلات بانتظام وتابع تطورات السوق 📊\n\n"
+        "╔═══════════════════════════════════════╗\n"
+        "║  🔥 مرحباً بك في أقوى نظام تحليل فني 🔥  ║\n"
+        "╚═══════════════════════════════════════╝"
     )
     return text
 
-# --- معالجات الأوامر والأزرار ---
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """معالج أمر /start"""
+    """Handler for the /start command."""
     user = update.effective_user
     logger.info(f"User {user.first_name} started the bot.")
 
-    await update.message.reply_html(
-        f"أهلاً بك يا {user.mention_html()}!"
-    )
+    # The initial "Welcome" message is now part of the main message.
+    # We send the main message directly.
     await update.message.reply_text(
-        get_start_message_text(),
+        text=get_start_message_text(),
         reply_markup=get_keyboard(),
-        parse_mode='Markdown'
+        parse_mode='Markdown' # Using Markdown for the bolding
     )
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """معالج ضغطات الأزرار"""
+    """Handler for button presses."""
     query = update.callback_query
-    await query.answer()  # ضروري لإعلام تليجرام بأن الضغطة تمت معالجتها
+    await query.answer()
 
     callback_data = query.data
     logger.info(f"Button pressed: {callback_data}")
 
     if callback_data == "start_bot":
         bot_state["is_active"] = True
-        await query.edit_message_text(
-            text=get_start_message_text(),
-            reply_markup=get_keyboard(),
-            parse_mode='Markdown'
-        )
+        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_keyboard(), parse_mode='Markdown')
     elif callback_data == "stop_bot":
         bot_state["is_active"] = False
-        await query.edit_message_text(
-            text=get_start_message_text(),
-            reply_markup=get_keyboard(),
-            parse_mode='Markdown'
-        )
+        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_keyboard(), parse_mode='Markdown')
     elif callback_data == "analyze":
         if not bot_state["is_active"]:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="البوت متوقف حاليًا. يرجى الضغط على 'تشغيل' أولاً.")
+            await query.message.reply_text("البوت متوقف حاليًا. يرجى الضغط على 'تشغيل' أولاً.")
             return
-
-        # في المرحلة التالية، سيتم عرض قائمة العملات هنا
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="ميزة التحليل قيد التطوير وسيتم إضافتها في المرحلة التالية.")
-
-# --- الدالة الرئيسية لتشغيل البوت ---
+        # This will be implemented in the next phase
+        await query.message.reply_text("ميزة التحليل قيد التطوير وسيتم إضافتها في المرحلة التالية.")
 
 def main() -> None:
-    """دالة التشغيل الرئيسية للبوت"""
+    """Main function to run the bot."""
     config = get_config()
     token = config['telegram']['BOT_TOKEN']
-
     if not token:
-        logger.error("خطأ: لم يتم العثور على رمز بوت التليجرام في ملف .env. يرجى إضافته.")
+        logger.error("Error: Telegram bot token not found in .env file.")
         return
 
-    # إنشاء التطبيق
     application = Application.builder().token(token).build()
-
-    # إضافة المعالجات
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_callback))
 
-    logger.info("Bot is starting...")
-    # تشغيل البوت
+    logger.info("Interactive bot is starting...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
