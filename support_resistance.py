@@ -62,6 +62,8 @@ class SupportResistanceAnalysis:
         return {'start': zone_start, 'end': zone_end, 'touches': touches, 'strength_score': round(strength_score, 2), 'strength_text': strength_text}
 
     def get_comprehensive_sr_analysis(self) -> Dict:
+        if len(self.df) < self.lookback_period:
+            return {'error': f'Not enough data for S/R analysis. Need {self.lookback_period}, got {len(self.df)}.', 'sr_score': 0}
         levels = self.find_all_levels()
         support_zones = self.cluster_levels_to_zones(levels['supports'])
         resistance_zones = self.cluster_levels_to_zones(levels['resistances'])
