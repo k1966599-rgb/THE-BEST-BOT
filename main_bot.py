@@ -46,11 +46,13 @@ class ComprehensiveTradingBot:
         timeframe = self.config['trading']['INTERVAL']
         period_str = self.config['trading']['PERIOD']
         now = datetime.utcnow()
-        num = int(period_str.rstrip('ymod '))
         unit = ''.join(filter(str.isalpha, period_str))
+        num = int(''.join(filter(str.isdigit, period_str)))
+
         if unit == 'y': days = num * 365
         elif unit == 'mo': days = num * 30
-        else: days = num
+        elif unit == 'w': days = num * 7
+        else: days = num # Default to days
         since = self.exchange.parse8601((now - timedelta(days=days)).isoformat())
         try:
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, timeframe, since, limit=1000)
