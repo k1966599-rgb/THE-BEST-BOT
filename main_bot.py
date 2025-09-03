@@ -16,6 +16,7 @@ from trade_management import TradeManagement
 warnings.filterwarnings('ignore')
 
 class ComprehensiveTradingBot:
+    # ... (init, fetch_data, get_top_usdt_coins methods remain the same)
     def __init__(self, symbol: str, config: dict):
         self.symbol = symbol.upper()
         self.config = config
@@ -68,6 +69,7 @@ class ComprehensiveTradingBot:
             return False
 
     def run_all_analyses(self):
+        # ... (this method remains the same)
         analysis_functions = [
             self.run_technical_indicators_analysis, self.run_trends_analysis,
             self.run_channels_analysis, self.run_support_resistance_analysis,
@@ -79,30 +81,25 @@ class ComprehensiveTradingBot:
             func()
         print("--- انتهاء وحدات التحليل ---")
 
+    # ... (all run_..._analysis methods remain the same)
     def run_technical_indicators_analysis(self):
         try: self.analysis_results['indicators'] = TechnicalIndicators(self.df).get_comprehensive_analysis()
         except Exception as e: self.analysis_results['indicators'] = {'error': str(e), 'total_score': 0}
-
     def run_trends_analysis(self):
         try: self.analysis_results['trends'] = TrendAnalysis(self.df).get_comprehensive_trend_analysis()
         except Exception as e: self.analysis_results['trends'] = {'error': str(e), 'total_score': 0}
-
     def run_channels_analysis(self):
         try: self.analysis_results['channels'] = PriceChannels(self.df).get_comprehensive_channel_analysis()
         except Exception as e: self.analysis_results['channels'] = {'error': str(e), 'total_score': 0}
-
     def run_support_resistance_analysis(self):
         try: self.analysis_results['support_resistance'] = SupportResistanceAnalysis(self.df).get_comprehensive_sr_analysis()
         except Exception as e: self.analysis_results['support_resistance'] = {'error': str(e), 'sr_score': 0}
-
     def run_fibonacci_analysis(self):
         try: self.analysis_results['fibonacci'] = FibonacciAnalysis(self.df).get_comprehensive_fibonacci_analysis()
         except Exception as e: self.analysis_results['fibonacci'] = {'error': str(e), 'fib_score': 0}
-
     def run_classic_patterns_analysis(self):
         try: self.analysis_results['patterns'] = ClassicPatterns(self.df).get_comprehensive_pattern_analysis()
         except Exception as e: self.analysis_results['patterns'] = {'error': str(e), 'pattern_score': 0}
-
     def run_trade_management_analysis(self):
         try:
             tm = TradeManagement(self.df, self.config['trading']['ACCOUNT_BALANCE'])
@@ -110,6 +107,7 @@ class ComprehensiveTradingBot:
         except Exception as e: self.analysis_results['trade_management'] = {'error': str(e)}
 
     def calculate_final_recommendation(self):
+        # ... (this method remains the same)
         scores = {
             'indicators': self.analysis_results.get('indicators', {}).get('total_score', 0),
             'trends': self.analysis_results.get('trends', {}).get('total_score', 0),
@@ -127,15 +125,68 @@ class ComprehensiveTradingBot:
         self.final_recommendation = {'symbol': self.symbol, 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),'current_price': self.df['close'].iloc[-1], 'main_action': main_action, 'confidence': confidence, 'total_score': total_score, 'individual_scores': scores}
 
     def generate_detailed_report(self) -> str:
+        """Generates the final report based on the user's detailed template."""
         rec = self.final_recommendation
+        sr = self.analysis_results.get('support_resistance', {})
         trade_plan = self.analysis_results.get('trade_management', {})
-        report = f"تحليل شامل لـ {rec.get('symbol')} | السعر الحالي: ${rec.get('current_price', 0):.4f}\n"
-        report += f"=================================================\n"
-        report += f"🎯 التوصية النهائية: {rec.get('main_action', 'N/A')} (الثقة: {rec.get('confidence', 0)}%)\n"
-        report += f"⚖️ النتيجة الإجمالية: {rec.get('total_score', 0)}\n"
-        if 'error' not in trade_plan:
-            if 'entry_price' in trade_plan:
-                report += f"خطة التداول: دخول ${trade_plan.get('entry_price', 0):.4f}, وقف ${trade_plan.get('stop_loss', 0):.4f}, هدف ${trade_plan.get('profit_target', 0):.4f}\n"
+        indicators = self.analysis_results.get('indicators', {})
+
+        # Helper for formatting zones
+        def format_zone(zone_data, current_price):
+            if not zone_data: return "غير محدد"
+            start, end = zone_data['start'], zone_data['end']
+            distance = abs(current_price - zone_data['avg_price'])
+            return (f"📍 **السعر:** ${start:,.2f} - ${end:,.2f}\n"
+                    f"- **المسافة:** {distance:,.0f} نقطة\n"
+                    f"- **قوة المنطقة:** {zone_data.get('strength', 'N/A')} (تم اختبارها {zone_data.get('touches', 'N/A')} مرات)")
+
+        # Main Recommendation
+        report = f"🪙 **تحليل فني شامل - {rec.get('symbol')} ({self.config['trading']['EXCHANGE_ID'].upper()})**\n"
+        report += f"**📅 التاريخ:** {rec.get('timestamp')}\n"
+        report += f"**💰 السعر الحالي:** ${rec.get('current_price', 0):,.2f}\n"
+        report += "---\n"
+        report += f"## 🎯 التوصية الرئيسية من الاستراتيجية\n"
+        report += f"**{rec.get('main_action', 'N/A')}** | **مستوى الثقة: {rec.get('confidence', 0)}%** | **النتيجة الإجمالية: {rec.get('total_score', 0):+}**\n"
+        report += "---\n"
+
+        # Critical Zones
+        report += f"## 🔥 المناطق الحرجة حسب الاستراتيجية\n"
+        report += f"### 📊 الوضع الحالي للسعر\n**{rec.get('symbol')} الآن عند: ${rec.get('current_price', 0):,.2f}**\n\n"
+
+        supply_zone = sr.get('primary_supply_zone')
+        demand_zone = sr.get('primary_demand_zone')
+
+        report += f"### 🔴 منطقة العرض (Supply Zone) - مقاومة قوية\n{format_zone(supply_zone, rec.get('current_price', 0))}\n\n"
+        report += f"### 🟢 منطقة الطلب (Demand Zone) - دعم قوي\n{format_zone(demand_zone, rec.get('current_price', 0))}\n"
+        report += "---\n"
+
+        # Trading Plan
+        report += f"## 🎯 خطة التداول المبنية على الاستراتيجية\n"
+        if 'entry_price' in trade_plan:
+            rr_ratio = trade_plan.get('risk_reward_ratio', 0)
+            report += f"### 🟢 سيناريو {trade_plan.get('direction', '')} الأساسي\n"
+            report += f"**نقطة الدخول:** ${trade_plan.get('entry_price', 0):,.2f}\n"
+            report += f"- **وقف الخسارة:** ${trade_plan.get('stop_loss', 0):,.2f}\n"
+            report += f"- **الهدف:** ${trade_plan.get('profit_target', 0):,.2f}\n"
+            report += f"- **نسبة المخاطرة/العائد:** 1:{rr_ratio:.1f}\n"
+        else:
+            report += "لا توجد خطة تداول واضحة حاليًا.\n"
+        report += "---\n"
+
+        # Indicator Analysis
+        report += f"## 🔍 تحليل المؤشرات داخل المناطق\n"
+        if 'error' not in indicators:
+            rsi = indicators.get('momentum', {}).get('rsi', 0)
+            macd = indicators.get('momentum', {}).get('macd', 0)
+            macd_signal = indicators.get('momentum', {}).get('macd_signal', 0)
+            report += f"### 📊 القوة النسبية (RSI = {rsi:.1f})\n"
+            report += f"- **الوضع:** {'ذروة شراء' if rsi > 70 else 'ذروة بيع' if rsi < 30 else 'متوسط صحي'}\n"
+            report += f"### 📈 MACD والزخم\n"
+            report += f"- **الإشارة:** {'شراء' if macd > macd_signal else 'بيع'}\n"
+
+        report += "---\n"
+        report += "*📝 التحليل مبني على الاستراتيجية الشاملة - ليس نصيحة استثمارية*"
+
         return report
 
     def run_complete_analysis(self) -> str:
