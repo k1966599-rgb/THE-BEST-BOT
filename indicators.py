@@ -143,11 +143,9 @@ class TechnicalIndicators:
         # Average True Range
         self.df['ATR'] = talib.ATR(self.df['high'], self.df['low'], self.df['close'], timeperiod=14)
 
-        # Volatility Index (using talib's PLUS_DI and MINUS_DI as a proxy)
-        # Note: talib doesn't have a direct 'VI' or 'Vortex Indicator'. Using ADX components.
-        # This part might need adjustment if a specific VI is required.
-        # For simplicity, I'm assuming a different VI was intended. I'll comment out the original VI.
-        # self.df['VI_plus'], self.df['VI_minus'] = talib.PLUS_VI(...) # This function does not exist in TA-Lib
+        # Directional Movement Index
+        self.df['PLUS_DI'] = talib.PLUS_DI(self.df['high'], self.df['low'], self.df['close'], timeperiod=14)
+        self.df['MINUS_DI'] = talib.MINUS_DI(self.df['high'], self.df['low'], self.df['close'], timeperiod=14)
 
         current_price = self.df['close'].iloc[-1]
         bb_upper = self.df['BB_upper'].iloc[-1]
@@ -219,7 +217,7 @@ class TechnicalIndicators:
             volume_analysis = "حجم تداول عادي"
 
         return {
-            'current_volume': current_price,
+            'current_volume': current_volume,
             'avg_volume': avg_volume,
             'mfi': mfi,
             'obv': self.df['OBV'].iloc[-1],
