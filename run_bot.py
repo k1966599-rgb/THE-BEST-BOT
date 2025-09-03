@@ -1,13 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-🤖 البوت الشامل للتحليل الفني (يعمل مع CCXT)
-"""
 import sys
 import os
 import argparse
 from datetime import datetime
 import time
+import copy
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -18,69 +14,72 @@ except ImportError as e:
     print(f"❌ خطأ في استيراد الوحدات: {e}")
     sys.exit(1)
 
-def create_output_folder(config: dict):
-    output_folder = config['output']['OUTPUT_FOLDER']
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-    return output_folder
+def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict) -> dict:
+    """Runs the complete analysis for a single symbol on a specific timeframe."""
+    print(f"\n--- ⏳ تحليل {symbol} على فريم {timeframe} ---")
 
-def analyze_single_symbol(symbol: str, config: dict, save_to_file: bool = True) -> dict:
-    print(f"\n🔍 تحليل الرمز: {symbol}")
-    print("="*50)
+    # Create a deep copy of the config to avoid modifying the original
+    timeframe_config = copy.deepcopy(config)
+    timeframe_config['trading']['INTERVAL'] = timeframe
+
     try:
-        bot = ComprehensiveTradingBot(symbol=symbol, config=config)
+        bot = ComprehensiveTradingBot(symbol=symbol, config=timeframe_config)
         report = bot.run_complete_analysis()
-        if save_to_file and config['output']['SAVE_TXT']:
-            output_folder = create_output_folder(config)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            safe_symbol_name = symbol.replace('/', '_')
-            txt_filename = os.path.join(output_folder, f"{safe_symbol_name}_report_{timestamp}.txt")
-            with open(txt_filename, 'w', encoding='utf-8') as f:
-                f.write(report)
-            print(f"💾 تم حفظ التقرير النصي: {txt_filename}")
-        return {'symbol': symbol, 'success': True, 'report': report}
+        # Add timeframe to the result for ranking
+        bot.final_recommendation['timeframe'] = timeframe
+        return {'success': True, 'result': bot.final_recommendation, 'report': report}
     except Exception as e:
-        error_msg = f"❌ خطأ في تحليل {symbol}: {e}"
-        print(error_msg)
-        return {'symbol': symbol, 'success': False, 'error': str(e)}
+        print(f"❌ خطأ في تحليل {symbol} على فريم {timeframe}: {e}")
+        return {'success': False, 'timeframe': timeframe, 'error': str(e)}
 
-def analyze_multiple_symbols(symbols: list, config: dict, save: bool) -> list:
-    results = []
-    for i, symbol in enumerate(symbols, 1):
-        print(f"\n[{i}/{len(symbols)}] معالجة {symbol}...")
-        result = analyze_single_symbol(symbol, config, save_to_file=save)
-        results.append(result)
-        if i < len(symbols):
-            time.sleep(3)
-    return results
+def rank_opportunities(results: list) -> list:
+    """Ranks analysis results from different timeframes."""
+    for res in results:
+        if res['success']:
+            rec = res['result']
+            # Prioritize strong signals with high confidence. Penalize 'Wait' signals.
+            signal_multiplier = 0.5 if 'انتظار' in rec.get('main_action', '') else 1.0
+            rank_score = abs(rec.get('total_score', 0)) * (rec.get('confidence', 0) / 100) * signal_multiplier
+            res['rank_score'] = rank_score
+        else:
+            res['rank_score'] = -1
 
-def generate_summary_report(results: list) -> str:
-    successful_results = [r for r in results if r['success']]
-    failed_results = [r for r in results if not r['success']]
-    summary = f"ملخص التحليل - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-    summary += f"نجح: {len(successful_results)} | فشل: {len(failed_results)}\n"
-    for res in successful_results:
-        try:
-            # Extract the main recommendation line from the report
-            report_line = next(line for line in res.get('report', '').split('\n') if 'التوصية النهائية' in line)
-            summary += f"- {res['symbol']}: {report_line.strip()}\n"
-        except StopIteration:
-            summary += f"- {res['symbol']}: تعذر استخلاص التقرير.\n"
-    return summary
+    return sorted(results, key=lambda x: x['rank_score'], reverse=True)
+
+def generate_multi_timeframe_report(symbol: str, ranked_results: list):
+    """Generates a final report with the best timeframe analysis and a summary of others."""
+    if not ranked_results or not ranked_results[0]['success']:
+        print(f"\n❌ لم يتم العثور على فرص تداول واضحة لـ {symbol}")
+        return
+
+    best_result = ranked_results[0]
+    print(f"\n\n🏆 **أفضل فرصة لـ {symbol} على فريم {best_result['result']['timeframe']}** 🏆")
+    print(best_result['report'])
+
+    if len(ranked_results) > 1:
+        print("\n--- ملخص باقي الفريمات ---")
+        for res in ranked_results[1:]:
+            if res['success']:
+                rec = res['result']
+                print(f"- **فريم {rec['timeframe']}**: {rec['main_action']} (النتيجة: {rec['total_score']:+})")
+            else:
+                print(f"- **فريم {res['timeframe']}**: فشل التحليل ({res['error']})")
 
 def main():
     parser = argparse.ArgumentParser(description='🤖 البوت الشامل للتحليل الفني (CCXT)')
     parser.add_argument('symbols', nargs='*', help='رموز العملات للتحليل (e.g., BTC/USDT)')
+    # ... (other args remain the same)
     parser.add_argument('--watchlist', action='store_true', help='تحليل قائمة المراقبة')
     parser.add_argument('--top20', action='store_true', help='تحليل أفضل 20 عملة')
     parser.add_argument('--no-save', action='store_true', help='عدم حفظ التقارير')
     parser.add_argument('--period', type=str, default=None, help="تحديد فترة البيانات (e.g., '1y', '6mo')")
-    parser.add_argument('--interval', type=str, default=None, help="تحديد الفاصل الزمني (e.g., '1d', '4h')")
+
+
     args = parser.parse_args()
     config = get_config()
 
     if args.period: config['trading']['PERIOD'] = args.period
-    if args.interval: config['trading']['INTERVAL'] = args.interval
+    # The --interval argument is now ignored, as we use the list from the config
 
     symbols_to_analyze = []
     if args.top20:
@@ -98,15 +97,21 @@ def main():
         print("❌ لم يتم تحديد عملات للتحليل.")
         sys.exit(1)
 
-    print(f"📊 سيتم تحليل {len(symbols_to_analyze)} رمز من منصة {config['trading']['EXCHANGE_ID']}")
+    timeframes = config['trading'].get('TIMEFRAMES_TO_ANALYZE', ['1d'])
+    print(f"📊 سيتم تحليل {len(symbols_to_analyze)} رمز على {len(timeframes)} فريمات زمنية...")
 
-    if len(symbols_to_analyze) == 1:
-        result = analyze_single_symbol(symbols_to_analyze[0], config, not args.no_save)
-        print(f"\n{result.get('report', 'لا يوجد تقرير')}")
-    else:
-        results = analyze_multiple_symbols(symbols_to_analyze, config, not args.no_save)
-        summary = generate_summary_report(results)
-        print(f"\n{summary}")
+    for symbol in symbols_to_analyze:
+        all_timeframe_results = []
+        for timeframe in timeframes:
+            result = run_analysis_for_timeframe(symbol, timeframe, config)
+            all_timeframe_results.append(result)
+            time.sleep(1) # Small sleep between timeframe analyses
+
+        ranked_results = rank_opportunities(all_timeframe_results)
+        generate_multi_timeframe_report(symbol, ranked_results)
+
+        if len(symbols_to_analyze) > 1:
+            time.sleep(5) # Longer sleep between symbols
 
 if __name__ == "__main__":
     main()
