@@ -10,14 +10,10 @@ from indicators import TechnicalIndicators
 from trends import TrendAnalysis
 from channels import PriceChannels
 from support_resistance import SupportResistanceAnalysis
+from fibonacci import FibonacciAnalysis
+from classic_patterns import ClassicPatterns
 
 # --- الفئات الوهمية للوحدات المتبقية ---
-class FibonacciAnalysis:
-    def __init__(self, df): self.df = df
-    def get_comprehensive_fibonacci_analysis(self): return {'error': 'Not implemented yet', 'fib_score': 0}
-class ClassicPatterns:
-    def __init__(self, df): self.df = df
-    def get_comprehensive_pattern_analysis(self): return {'error': 'Not implemented yet', 'pattern_score': 0}
 class TradeManagement:
     def __init__(self, df, balance): self.df, self.balance = df, balance
     def get_comprehensive_trade_plan(self, results): return {'error': 'Not implemented yet'}
@@ -49,11 +45,7 @@ class ComprehensiveTradingBot:
         self.exchange = getattr(ccxt, exchange_id)(exchange_config)
 
         if config['exchange'].get('SANDBOX_MODE'):
-            if self.exchange.has['sandbox']:
-                self.exchange.set_sandbox_mode(True)
-                print("✅ تم تفعيل وضع الاختبار (Sandbox Mode)")
-            else:
-                print(f"⚠️ المنصة {exchange_id} لا تدعم وضع الاختبار.")
+            self.exchange.set_sandbox_mode(True)
 
         try:
             self.exchange.load_markets()
@@ -62,10 +54,8 @@ class ComprehensiveTradingBot:
             raise
 
     def fetch_data(self) -> bool:
-        # ... (This method remains the same)
         timeframe = self.config['trading']['INTERVAL']
         period_str = self.config['trading']['PERIOD']
-        print(f"🔄 جاري جلب بيانات {self.symbol} بإطار زمني {timeframe}...")
         now = datetime.utcnow()
         num = int(period_str[:-1]); unit = period_str[-1]
         if unit == 'y': days = num * 365
@@ -73,54 +63,50 @@ class ComprehensiveTradingBot:
         else: days = num
         since = self.exchange.parse8601((now - timedelta(days=days)).isoformat())
         try:
-            if not self.exchange.has['fetchOHLCV']: return False
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, timeframe, since, limit=1000)
             if not ohlcv: return False
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
             self.df = df.dropna()
-            print(f"✅ تم جلب {len(self.df)} شمعة لـ {self.symbol}")
             return True
-        except ccxt.BaseError as e:
-            print(f"❌ خطأ في جلب البيانات: {e}")
+        except Exception as e:
+            print(f"Error fetching data: {e}")
             return False
 
     def run_technical_indicators_analysis(self):
-        print("🔄 تحليل المؤشرات الفنية...")
-        try:
-            indicators = TechnicalIndicators(self.df)
-            self.analysis_results['indicators'] = indicators.get_comprehensive_analysis()
-            print("✅ تم تحليل المؤشرات الفنية")
-        except Exception as e:
-            self.analysis_results['indicators'] = {'error': str(e), 'total_score': 0}
+        try: self.analysis_results['indicators'] = TechnicalIndicators(self.df).get_comprehensive_analysis()
+        except Exception as e: self.analysis_results['indicators'] = {'error': str(e), 'total_score': 0}
 
     def run_trends_analysis(self):
-        print("🔄 تحليل الترندات...")
-        try:
-            trends = TrendAnalysis(self.df)
-            self.analysis_results['trends'] = trends.get_comprehensive_trend_analysis()
-            print("✅ تم تحليل الترندات")
-        except Exception as e:
-            self.analysis_results['trends'] = {'error': str(e), 'total_score': 0}
+        try: self.analysis_results['trends'] = TrendAnalysis(self.df).get_comprehensive_trend_analysis()
+        except Exception as e: self.analysis_results['trends'] = {'error': str(e), 'total_score': 0}
 
     def run_channels_analysis(self):
-        print("🔄 تحليل القنوات السعرية...")
-        try:
-            channels = PriceChannels(self.df)
-            self.analysis_results['channels'] = channels.get_comprehensive_channel_analysis()
-            print("✅ تم تحليل القنوات السعرية")
-        except Exception as e:
-            self.analysis_results['channels'] = {'error': str(e), 'total_score': 0}
+        try: self.analysis_results['channels'] = PriceChannels(self.df).get_comprehensive_channel_analysis()
+        except Exception as e: self.analysis_results['channels'] = {'error': str(e), 'total_score': 0}
 
     def run_support_resistance_analysis(self):
-        print("🔄 تحليل الدعوم والمقاومة...")
+        try: self.analysis_results['support_resistance'] = SupportResistanceAnalysis(self.df).get_comprehensive_sr_analysis()
+        except Exception as e: self.analysis_results['support_resistance'] = {'error': str(e), 'sr_score': 0}
+
+    def run_fibonacci_analysis(self):
+        print("🔄 تحليل فيبوناتشي...")
         try:
-            sr = SupportResistanceAnalysis(self.df)
-            self.analysis_results['support_resistance'] = sr.get_comprehensive_sr_analysis()
-            print("✅ تم تحليل الدعوم والمقاومة")
+            fib = FibonacciAnalysis(self.df)
+            self.analysis_results['fibonacci'] = fib.get_comprehensive_fibonacci_analysis()
+            print("✅ تم تحليل فيبوناتشي")
         except Exception as e:
-            self.analysis_results['support_resistance'] = {'error': str(e), 'sr_score': 0}
+            self.analysis_results['fibonacci'] = {'error': str(e), 'fib_score': 0}
+
+    def run_classic_patterns_analysis(self):
+        print("🔄 تحليل النماذج الكلاسيكية...")
+        try:
+            patterns = ClassicPatterns(self.df)
+            self.analysis_results['patterns'] = patterns.get_comprehensive_pattern_analysis()
+            print("✅ تم تحليل النماذج الكلاسيكية")
+        except Exception as e:
+            self.analysis_results['patterns'] = {'error': str(e), 'pattern_score': 0}
 
     def calculate_final_recommendation(self):
         print("🔄 حساب التوصية النهائية...")
@@ -129,14 +115,16 @@ class ComprehensiveTradingBot:
             'trends': self.analysis_results.get('trends', {}).get('total_score', 0),
             'channels': self.analysis_results.get('channels', {}).get('total_score', 0),
             'support_resistance': self.analysis_results.get('support_resistance', {}).get('sr_score', 0),
+            'fibonacci': self.analysis_results.get('fibonacci', {}).get('fib_score', 0),
+            'patterns': self.analysis_results.get('patterns', {}).get('pattern_score', 0),
         }
         total_score = sum(scores.values())
 
-        if total_score >= 8: main_action, confidence = "شراء قوي 🚀", 90
-        elif total_score >= 4: main_action, confidence = "شراء 📈", 80
-        elif total_score >= -2: main_action, confidence = "انتظار ⏳", 50
-        elif total_score >= -6: main_action, confidence = "بيع 📉", 80
-        else: main_action, confidence = "بيع قوي 🔻", 90
+        if total_score >= 10: main_action, confidence = "شراء قوي 🚀", 95
+        elif total_score >= 5: main_action, confidence = "شراء 📈", 85
+        elif total_score >= -2: main_action, confidence = "انتظار ⏳", 60
+        elif total_score >= -6: main_action, confidence = "بيع 📉", 85
+        else: main_action, confidence = "بيع قوي 🔻", 95
 
         self.final_recommendation = {
             'symbol': self.symbol, 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -144,13 +132,15 @@ class ComprehensiveTradingBot:
             'confidence': confidence, 'total_score': total_score,
             'individual_scores': scores
         }
-        print("✅ تم حساب التوصية النهائية")
 
     def generate_detailed_report(self) -> str:
         rec = self.final_recommendation
-        report = f"تحليل شامل للرمز {rec.get('symbol', 'N/A')}\n"
-        # ... (Full report generation logic will be expanded later)
-        report += f"🎯 التوصية: {rec.get('main_action', 'N/A')} (النتيجة: {rec.get('total_score', 0)})\n"
+        report = f"تحليل شامل للرمز {rec.get('symbol', 'N/A')} - السعر الحالي: ${rec.get('current_price', 0):.4f}\n"
+        report += f"🎯 التوصية: {rec.get('main_action', 'N/A')} (الثقة: {rec.get('confidence', 0)}%)\n"
+        report += f"⚖️ النتيجة الإجمالية: {rec.get('total_score', 0)}\n"
+        report += "--------------------------------\n"
+        for name, score in rec.get('individual_scores', {}).items():
+            report += f"- {name.title()}: {score}\n"
         return report
 
     def run_complete_analysis(self) -> str:
@@ -158,10 +148,14 @@ class ComprehensiveTradingBot:
         if not self.fetch_data():
             return f"❌ فشل في جلب البيانات لـ {self.symbol}"
 
+        print("--- بدء وحدات التحليل ---")
         self.run_technical_indicators_analysis()
         self.run_trends_analysis()
         self.run_channels_analysis()
         self.run_support_resistance_analysis()
+        self.run_fibonacci_analysis()
+        self.run_classic_patterns_analysis()
+        print("--- انتهاء وحدات التحليل ---")
 
         self.calculate_final_recommendation()
         report = self.generate_detailed_report()
