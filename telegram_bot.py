@@ -53,8 +53,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.info(f"User {user.first_name} started the bot.")
 
     await update.message.reply_html(
-        f"أهلاً بك يا {user.mention_html()}!",
-        quote=False
+        f"أهلاً بك يا {user.mention_html()}!"
     )
     await update.message.reply_text(
         get_start_message_text(),
