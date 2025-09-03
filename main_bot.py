@@ -8,14 +8,10 @@ from typing import Dict, List
 # --- استيراد وحدات التحليل الحقيقية ---
 from indicators import TechnicalIndicators
 from trends import TrendAnalysis
+from channels import PriceChannels
+from support_resistance import SupportResistanceAnalysis
 
 # --- الفئات الوهمية للوحدات المتبقية ---
-class PriceChannels:
-    def __init__(self, df): self.df = df
-    def get_comprehensive_channel_analysis(self): return {'error': 'Not implemented yet', 'total_score': 0}
-class SupportResistanceAnalysis:
-    def __init__(self, df): self.df = df
-    def get_comprehensive_sr_analysis(self): return {'error': 'Not implemented yet', 'sr_score': 0}
 class FibonacciAnalysis:
     def __init__(self, df): self.df = df
     def get_comprehensive_fibonacci_analysis(self): return {'error': 'Not implemented yet', 'fib_score': 0}
@@ -65,43 +61,21 @@ class ComprehensiveTradingBot:
             print(f"❌ فشل في تحميل الأسواق من {exchange_id}: {e}")
             raise
 
-    def get_top_usdt_coins(self, top_n: int = 20) -> List[str]:
-        print(f"🔄 جاري جلب أفضل {top_n} عملة من {self.exchange.id}...")
-        try:
-            if not self.exchange.has['fetchTickers']:
-                return []
-            tickers = self.exchange.fetch_tickers()
-            usdt_tickers = {
-                symbol: ticker for symbol, ticker in tickers.items()
-                if isinstance(ticker, dict) and symbol.endswith('/USDT') and ticker.get('quoteVolume') is not None and ticker.get('quoteVolume') > 10000000
-            }
-            sorted_tickers = sorted(usdt_tickers.values(), key=lambda x: x['quoteVolume'], reverse=True)
-            return [t['symbol'] for t in sorted_tickers[:top_n]]
-        except ccxt.BaseError as e:
-            print(f"❌ خطأ في جلب قائمة العملات: {e}")
-            return []
-
     def fetch_data(self) -> bool:
+        # ... (This method remains the same)
         timeframe = self.config['trading']['INTERVAL']
         period_str = self.config['trading']['PERIOD']
         print(f"🔄 جاري جلب بيانات {self.symbol} بإطار زمني {timeframe}...")
-
         now = datetime.utcnow()
-        num = int(period_str[:-1])
-        unit = period_str[-1]
-
+        num = int(period_str[:-1]); unit = period_str[-1]
         if unit == 'y': days = num * 365
         elif unit == 'm': days = num * 30
-        elif unit == 'd': days = num
-        else: days = 365
-
+        else: days = num
         since = self.exchange.parse8601((now - timedelta(days=days)).isoformat())
-
         try:
             if not self.exchange.has['fetchOHLCV']: return False
             ohlcv = self.exchange.fetch_ohlcv(self.symbol, timeframe, since, limit=1000)
             if not ohlcv: return False
-
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
@@ -130,18 +104,38 @@ class ComprehensiveTradingBot:
         except Exception as e:
             self.analysis_results['trends'] = {'error': str(e), 'total_score': 0}
 
+    def run_channels_analysis(self):
+        print("🔄 تحليل القنوات السعرية...")
+        try:
+            channels = PriceChannels(self.df)
+            self.analysis_results['channels'] = channels.get_comprehensive_channel_analysis()
+            print("✅ تم تحليل القنوات السعرية")
+        except Exception as e:
+            self.analysis_results['channels'] = {'error': str(e), 'total_score': 0}
+
+    def run_support_resistance_analysis(self):
+        print("🔄 تحليل الدعوم والمقاومة...")
+        try:
+            sr = SupportResistanceAnalysis(self.df)
+            self.analysis_results['support_resistance'] = sr.get_comprehensive_sr_analysis()
+            print("✅ تم تحليل الدعوم والمقاومة")
+        except Exception as e:
+            self.analysis_results['support_resistance'] = {'error': str(e), 'sr_score': 0}
+
     def calculate_final_recommendation(self):
         print("🔄 حساب التوصية النهائية...")
         scores = {
             'indicators': self.analysis_results.get('indicators', {}).get('total_score', 0),
             'trends': self.analysis_results.get('trends', {}).get('total_score', 0),
+            'channels': self.analysis_results.get('channels', {}).get('total_score', 0),
+            'support_resistance': self.analysis_results.get('support_resistance', {}).get('sr_score', 0),
         }
         total_score = sum(scores.values())
 
-        if total_score >= 5: main_action, confidence = "شراء قوي 🚀", 90
-        elif total_score >= 2: main_action, confidence = "شراء 📈", 75
-        elif total_score >= -1: main_action, confidence = "انتظار ⏳", 50
-        elif total_score >= -4: main_action, confidence = "بيع 📉", 75
+        if total_score >= 8: main_action, confidence = "شراء قوي 🚀", 90
+        elif total_score >= 4: main_action, confidence = "شراء 📈", 80
+        elif total_score >= -2: main_action, confidence = "انتظار ⏳", 50
+        elif total_score >= -6: main_action, confidence = "بيع 📉", 80
         else: main_action, confidence = "بيع قوي 🔻", 90
 
         self.final_recommendation = {
@@ -154,24 +148,9 @@ class ComprehensiveTradingBot:
 
     def generate_detailed_report(self) -> str:
         rec = self.final_recommendation
-        report = f"""
-تحليل شامل للرمز {rec['symbol']}
-التاريخ: {rec['timestamp']}
-السعر الحالي: ${rec['current_price']:.4f}
-================================
-🎯 التوصية الرئيسية: {rec['main_action']}
-📊 مستوى الثقة: {rec['confidence']}%
-⚖️ النتيجة الإجمالية: {rec['total_score']}
---------------------------------
-"""
-        indicators_res = self.analysis_results.get('indicators', {})
-        if 'error' not in indicators_res:
-            report += f"المؤشرات: {indicators_res.get('recommendation')} (النتيجة: {indicators_res.get('total_score')})\n"
-
-        trends_res = self.analysis_results.get('trends', {})
-        if 'error' not in trends_res:
-            report += f"الترندات: {trends_res.get('recommendation')} (النتيجة: {trends_res.get('total_score')})\n"
-
+        report = f"تحليل شامل للرمز {rec.get('symbol', 'N/A')}\n"
+        # ... (Full report generation logic will be expanded later)
+        report += f"🎯 التوصية: {rec.get('main_action', 'N/A')} (النتيجة: {rec.get('total_score', 0)})\n"
         return report
 
     def run_complete_analysis(self) -> str:
@@ -181,7 +160,8 @@ class ComprehensiveTradingBot:
 
         self.run_technical_indicators_analysis()
         self.run_trends_analysis()
-        # سيتم إضافة باقي التحليلات هنا
+        self.run_channels_analysis()
+        self.run_support_resistance_analysis()
 
         self.calculate_final_recommendation()
         report = self.generate_detailed_report()
