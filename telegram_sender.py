@@ -1,24 +1,32 @@
 import requests
-from config import get_config
+import os
+from dotenv import load_dotenv
 
 def send_telegram_message(message: str):
-    """Sends a message to the configured Telegram chat."""
-    config = get_config()
-    token = config['telegram'].get('BOT_TOKEN')
-    chat_id = config['telegram'].get('CHAT_ID')
+    """
+    Sends a message to the configured Telegram chat.
+    This function is self-sufficient and loads .env variables itself.
+    """
+    load_dotenv() # Load environment variables from .env file
+
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
 
     if not token or not chat_id:
-        print("⚠️ Telegram BOT_TOKEN or CHAT_ID not set. Skipping message.")
+        print("⚠️ Telegram BOT_TOKEN or CHAT_ID not set in .env file. Skipping message.")
         return
+
+    # A simple way to represent the message for logging without printing the whole thing
+    message_preview = message.split('\n')[0]
+    print(f"Attempting to send report to Telegram: {message_preview}...")
 
     max_length = 4096
     try:
         if len(message) <= max_length:
             send_text = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&parse_mode=Markdown&text={requests.utils.quote(message)}"
-            response = requests.get(send_text)
+            response = requests.get(send_text, timeout=10)
             response.raise_for_status()
         else:
-            # Split the message into parts
             parts = []
             current_part = ""
             for line in message.split('\n'):
@@ -32,7 +40,7 @@ def send_telegram_message(message: str):
             for i, part in enumerate(parts):
                 header = f"📊 **تقرير التحليل (جزء {i+1}/{len(parts)})**\n\n"
                 send_text = f"https://api.telegram.org/bot{token}/sendMessage?chat_id={chat_id}&parse_mode=Markdown&text={requests.utils.quote(header + part)}"
-                response = requests.get(send_text)
+                response = requests.get(send_text, timeout=10)
                 response.raise_for_status()
 
         print("✅ تم إرسال التقرير بنجاح إلى تليجرام.")

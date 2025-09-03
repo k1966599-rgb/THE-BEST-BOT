@@ -27,8 +27,7 @@ EXCHANGE_CONFIG = {
 
 TELEGRAM_CONFIG = {
     'BOT_TOKEN': os.getenv('TELEGRAM_BOT_TOKEN', ''),
-    'CHAT_ID': os.getenv('TELEGRAM_CHAT_ID', ''),
-    'AUTO_SEND': os.getenv('TELEGRAM_AUTO_SEND', 'False').lower() in ('true', '1', 't')
+    'CHAT_ID': os.getenv('TELEGRAM_CHAT_ID', '')
 }
 
 ANALYSIS_CONFIG = {
