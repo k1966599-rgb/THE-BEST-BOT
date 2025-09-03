@@ -5,19 +5,14 @@ import json
 import warnings
 from typing import Dict, List
 
-# --- استيراد وحدات التحليل الحقيقية ---
+# --- استيراد جميع وحدات التحليل ---
 from indicators import TechnicalIndicators
 from trends import TrendAnalysis
 from channels import PriceChannels
 from support_resistance import SupportResistanceAnalysis
 from fibonacci import FibonacciAnalysis
 from classic_patterns import ClassicPatterns
-
-# --- الفئات الوهمية للوحدات المتبقية ---
-class TradeManagement:
-    def __init__(self, df, balance): self.df, self.balance = df, balance
-    def get_comprehensive_trade_plan(self, results): return {'error': 'Not implemented yet'}
-# --- نهاية الفئات الوهمية ---
+from trade_management import TradeManagement
 
 warnings.filterwarnings('ignore')
 
@@ -39,25 +34,16 @@ class ComprehensiveTradingBot:
             'enableRateLimit': True,
         }
 
-        if not hasattr(ccxt, exchange_id):
-            raise ValueError(f"المنصة '{exchange_id}' غير مدعومة من ccxt.")
-
         self.exchange = getattr(ccxt, exchange_id)(exchange_config)
-
-        if config['exchange'].get('SANDBOX_MODE'):
-            self.exchange.set_sandbox_mode(True)
-
-        try:
-            self.exchange.load_markets()
-        except ccxt.BaseError as e:
-            print(f"❌ فشل في تحميل الأسواق من {exchange_id}: {e}")
-            raise
+        if config['exchange'].get('SANDBOX_MODE'): self.exchange.set_sandbox_mode(True)
+        self.exchange.load_markets()
 
     def fetch_data(self) -> bool:
         timeframe = self.config['trading']['INTERVAL']
         period_str = self.config['trading']['PERIOD']
         now = datetime.utcnow()
-        num = int(period_str[:-1]); unit = period_str[-1]
+        num = int(period_str.rstrip('ymo d'))
+        unit = period_str[-1]
         if unit == 'y': days = num * 365
         elif unit == 'm': days = num * 30
         else: days = num
@@ -71,8 +57,17 @@ class ComprehensiveTradingBot:
             self.df = df.dropna()
             return True
         except Exception as e:
-            print(f"Error fetching data: {e}")
+            print(f"Error fetching data for {self.symbol}: {e}")
             return False
+
+    def run_all_analyses(self):
+        analysis_functions = [
+            self.run_technical_indicators_analysis, self.run_trends_analysis,
+            self.run_channels_analysis, self.run_support_resistance_analysis,
+            self.run_fibonacci_analysis, self.run_classic_patterns_analysis
+        ]
+        for func in analysis_functions:
+            func()
 
     def run_technical_indicators_analysis(self):
         try: self.analysis_results['indicators'] = TechnicalIndicators(self.df).get_comprehensive_analysis()
@@ -91,25 +86,21 @@ class ComprehensiveTradingBot:
         except Exception as e: self.analysis_results['support_resistance'] = {'error': str(e), 'sr_score': 0}
 
     def run_fibonacci_analysis(self):
-        print("🔄 تحليل فيبوناتشي...")
-        try:
-            fib = FibonacciAnalysis(self.df)
-            self.analysis_results['fibonacci'] = fib.get_comprehensive_fibonacci_analysis()
-            print("✅ تم تحليل فيبوناتشي")
-        except Exception as e:
-            self.analysis_results['fibonacci'] = {'error': str(e), 'fib_score': 0}
+        try: self.analysis_results['fibonacci'] = FibonacciAnalysis(self.df).get_comprehensive_fibonacci_analysis()
+        except Exception as e: self.analysis_results['fibonacci'] = {'error': str(e), 'fib_score': 0}
 
     def run_classic_patterns_analysis(self):
-        print("🔄 تحليل النماذج الكلاسيكية...")
+        try: self.analysis_results['patterns'] = ClassicPatterns(self.df).get_comprehensive_pattern_analysis()
+        except Exception as e: self.analysis_results['patterns'] = {'error': str(e), 'pattern_score': 0}
+
+    def run_trade_management_analysis(self):
         try:
-            patterns = ClassicPatterns(self.df)
-            self.analysis_results['patterns'] = patterns.get_comprehensive_pattern_analysis()
-            print("✅ تم تحليل النماذج الكلاسيكية")
+            tm = TradeManagement(self.df, self.config['trading']['ACCOUNT_BALANCE'])
+            self.analysis_results['trade_management'] = tm.get_comprehensive_trade_plan(self.final_recommendation, self.analysis_results)
         except Exception as e:
-            self.analysis_results['patterns'] = {'error': str(e), 'pattern_score': 0}
+            self.analysis_results['trade_management'] = {'error': str(e)}
 
     def calculate_final_recommendation(self):
-        print("🔄 حساب التوصية النهائية...")
         scores = {
             'indicators': self.analysis_results.get('indicators', {}).get('total_score', 0),
             'trends': self.analysis_results.get('trends', {}).get('total_score', 0),
@@ -135,12 +126,26 @@ class ComprehensiveTradingBot:
 
     def generate_detailed_report(self) -> str:
         rec = self.final_recommendation
-        report = f"تحليل شامل للرمز {rec.get('symbol', 'N/A')} - السعر الحالي: ${rec.get('current_price', 0):.4f}\n"
-        report += f"🎯 التوصية: {rec.get('main_action', 'N/A')} (الثقة: {rec.get('confidence', 0)}%)\n"
-        report += f"⚖️ النتيجة الإجمالية: {rec.get('total_score', 0)}\n"
-        report += "--------------------------------\n"
+        trade_plan = self.analysis_results.get('trade_management', {})
+
+        report = f"تحليل شامل لـ {rec.get('symbol')} | السعر الحالي: ${rec.get('current_price', 0):.4f}\n"
+        report += f"=================================================\n"
+        report += f"🎯 التوصية النهائية: {rec.get('main_action', 'N/A')} (الثقة: {rec.get('confidence', 0)}%)\n"
+        report += f"⚖️ النتيجة الإجمالية: {rec.get('total_score', 0)}\n\n"
+
+        report += "--- تفاصيل النتائج ---\n"
         for name, score in rec.get('individual_scores', {}).items():
-            report += f"- {name.title()}: {score}\n"
+            report += f"- {name.replace('_', ' ').title()}: {score}\n"
+
+        if 'error' not in trade_plan:
+            report += "\n--- خطة التداول المقترحة ---\n"
+            report += f"الإشارة: {trade_plan.get('signal', 'N/A')}\n"
+            if 'entry_price' in trade_plan:
+                report += f"سعر الدخول: ${trade_plan.get('entry_price', 0):.4f}\n"
+                report += f"وقف الخسارة: ${trade_plan.get('stop_loss', 0):.4f}\n"
+                report += f"جني الأرباح: ${trade_plan.get('profit_target', 0):.4f}\n"
+                report += f"نسبة المخاطرة/العائد: {trade_plan.get('risk_reward_ratio', 0):.2f}\n"
+
         return report
 
     def run_complete_analysis(self) -> str:
@@ -148,18 +153,11 @@ class ComprehensiveTradingBot:
         if not self.fetch_data():
             return f"❌ فشل في جلب البيانات لـ {self.symbol}"
 
-        print("--- بدء وحدات التحليل ---")
-        self.run_technical_indicators_analysis()
-        self.run_trends_analysis()
-        self.run_channels_analysis()
-        self.run_support_resistance_analysis()
-        self.run_fibonacci_analysis()
-        self.run_classic_patterns_analysis()
-        print("--- انتهاء وحدات التحليل ---")
-
+        self.run_all_analyses()
         self.calculate_final_recommendation()
+        self.run_trade_management_analysis() # Run after final recommendation
+
         report = self.generate_detailed_report()
 
         print(report)
-        print("="*50)
         return report
