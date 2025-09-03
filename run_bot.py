@@ -4,6 +4,7 @@ import argparse
 from datetime import datetime
 import time
 import copy
+import traceback
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -11,14 +12,13 @@ try:
     from main_bot import ComprehensiveTradingBot
     from config import get_config, WATCHLIST
     from telegram_sender import send_telegram_message
-    from report_generator import generate_full_report # Import the new generator
+    from report_generator import generate_full_report
 except ImportError as e:
     print(f"❌ خطأ في استيراد الوحدات: {e}")
     sys.exit(1)
 
 def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict) -> dict:
     """Runs the complete analysis for a single symbol on a specific timeframe."""
-    # This function now returns the entire bot object to access all results
     print(f"--- ⏳ تحليل {symbol} على فريم {timeframe} ---")
     timeframe_config = copy.deepcopy(config)
     timeframe_config['trading']['INTERVAL'] = timeframe
@@ -26,9 +26,11 @@ def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict) -> dic
         bot = ComprehensiveTradingBot(symbol=symbol, config=timeframe_config)
         bot.run_complete_analysis()
         bot.final_recommendation['timeframe'] = timeframe
-        # Pass the whole bot object back
         return {'success': True, 'bot': bot}
     except Exception as e:
+        # Add detailed exception logging for debugging
+        print(f"❌ An exception occurred during analysis of {symbol} on {timeframe}:")
+        traceback.print_exc()
         return {'success': False, 'timeframe': timeframe, 'error': str(e)}
 
 def rank_opportunities(results: list) -> list:
@@ -57,7 +59,6 @@ def get_ranked_analysis_for_symbol(symbol: str, config: dict) -> str:
 
     ranked_results = rank_opportunities(all_timeframe_results)
 
-    # Call the new report generator
     final_report = generate_full_report(
         symbol=symbol,
         exchange=config['trading']['EXCHANGE_ID'],
