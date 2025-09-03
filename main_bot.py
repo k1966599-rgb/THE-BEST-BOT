@@ -73,37 +73,41 @@ class ComprehensiveTradingBot:
             self.run_channels_analysis, self.run_support_resistance_analysis,
             self.run_fibonacci_analysis, self.run_classic_patterns_analysis
         ]
-        for func in analysis_functions: func()
+        print("--- بدء وحدات التحليل ---")
+        for func in analysis_functions:
+            print(f"🔄 Executing: {func.__name__}...")
+            func()
+        print("--- انتهاء وحدات التحليل ---")
 
     def run_technical_indicators_analysis(self):
         try: self.analysis_results['indicators'] = TechnicalIndicators(self.df).get_comprehensive_analysis()
-        except: self.analysis_results['indicators'] = {'error': 'Failed', 'total_score': 0}
+        except Exception as e: self.analysis_results['indicators'] = {'error': str(e), 'total_score': 0}
 
     def run_trends_analysis(self):
         try: self.analysis_results['trends'] = TrendAnalysis(self.df).get_comprehensive_trend_analysis()
-        except: self.analysis_results['trends'] = {'error': 'Failed', 'total_score': 0}
+        except Exception as e: self.analysis_results['trends'] = {'error': str(e), 'total_score': 0}
 
     def run_channels_analysis(self):
         try: self.analysis_results['channels'] = PriceChannels(self.df).get_comprehensive_channel_analysis()
-        except: self.analysis_results['channels'] = {'error': 'Failed', 'total_score': 0}
+        except Exception as e: self.analysis_results['channels'] = {'error': str(e), 'total_score': 0}
 
     def run_support_resistance_analysis(self):
         try: self.analysis_results['support_resistance'] = SupportResistanceAnalysis(self.df).get_comprehensive_sr_analysis()
-        except: self.analysis_results['support_resistance'] = {'error': 'Failed', 'sr_score': 0}
+        except Exception as e: self.analysis_results['support_resistance'] = {'error': str(e), 'sr_score': 0}
 
     def run_fibonacci_analysis(self):
         try: self.analysis_results['fibonacci'] = FibonacciAnalysis(self.df).get_comprehensive_fibonacci_analysis()
-        except: self.analysis_results['fibonacci'] = {'error': 'Failed', 'fib_score': 0}
+        except Exception as e: self.analysis_results['fibonacci'] = {'error': str(e), 'fib_score': 0}
 
     def run_classic_patterns_analysis(self):
         try: self.analysis_results['patterns'] = ClassicPatterns(self.df).get_comprehensive_pattern_analysis()
-        except: self.analysis_results['patterns'] = {'error': 'Failed', 'pattern_score': 0}
+        except Exception as e: self.analysis_results['patterns'] = {'error': str(e), 'pattern_score': 0}
 
     def run_trade_management_analysis(self):
         try:
             tm = TradeManagement(self.df, self.config['trading']['ACCOUNT_BALANCE'])
             self.analysis_results['trade_management'] = tm.get_comprehensive_trade_plan(self.final_recommendation, self.analysis_results)
-        except: self.analysis_results['trade_management'] = {'error': 'Failed'}
+        except Exception as e: self.analysis_results['trade_management'] = {'error': str(e)}
 
     def calculate_final_recommendation(self):
         scores = {
