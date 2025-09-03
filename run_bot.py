@@ -65,9 +65,8 @@ def generate_and_send_report(symbol: str, ranked_results: list, config: dict):
 
     print(full_report)
 
-    # Send to Telegram if enabled
-    if config['telegram'].get('AUTO_SEND', False):
-        send_telegram_message(full_report)
+    # Send to Telegram
+    send_telegram_message(full_report)
 
 def main():
     parser = argparse.ArgumentParser(description='🤖 البوت الشامل للتحليل الفني (CCXT)')
@@ -75,12 +74,10 @@ def main():
     parser.add_argument('--watchlist', action='store_true', help='تحليل قائمة المراقبة')
     parser.add_argument('--top20', action='store_true', help='تحليل أفضل 20 عملة')
     parser.add_argument('--period', type=str, default=None, help="تحديد فترة البيانات (e.g., '1y', '6mo')")
-    parser.add_argument('--telegram', action='store_true', help='تفعيل الإرسال إلى تليجرام لهذه المرة')
     args = parser.parse_args()
     config = get_config()
 
     if args.period: config['trading']['PERIOD'] = args.period
-    if args.telegram: config['telegram']['AUTO_SEND'] = True
 
     symbols_to_analyze = []
     if args.top20:
