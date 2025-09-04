@@ -11,60 +11,73 @@ from support_resistance import SupportResistanceAnalysis
 from fibonacci import FibonacciAnalysis
 from classic_patterns import ClassicPatterns
 from trade_management import TradeManagement
+from okx_data import OKXDataFetcher
 
 warnings.filterwarnings('ignore')
 
 class ComprehensiveTradingBot:
     """
     This class is the core analysis engine. It runs all analysis modules
-    for a SINGLE symbol and a SINGLE timeframe.
+    for a SINGLE symbol and a SINGLE timeframe, using data from OKXDataFetcher.
     """
-    def __init__(self, symbol: str, config: dict):
+    def __init__(self, symbol: str, config: dict, okx_fetcher: OKXDataFetcher):
         self.symbol = symbol.upper()
         self.config = config
+        self.okx_fetcher = okx_fetcher
         self.df = None
         self.analysis_results = {}
         self.final_recommendation = {}
-        exchange_id = config['trading']['EXCHANGE_ID']
-        exchange_config = {
-            'apiKey': config['exchange'].get('API_KEY'),
-            'secret': config['exchange'].get('API_SECRET'),
-            'password': config['exchange'].get('PASSWORD'),
-            'enableRateLimit': True,
-        }
-        self.exchange = getattr(ccxt, exchange_id)(exchange_config)
-        if config['exchange'].get('SANDBOX_MODE'): self.exchange.set_sandbox_mode(True)
-        try:
-            self.exchange.load_markets()
-        except ccxt.BaseError as e:
-            # It's better to not crash the whole app if markets fail to load,
-            # especially in an interactive context.
-            print(f"Warning: Could not load markets for {exchange_id}. {e}")
-            pass
+        self.exchange = None # ccxt exchange object is no longer used for fetching data
 
     def fetch_data(self) -> bool:
+        """
+        Fetches historical data for the required timeframe using the OKXDataFetcher.
+        This method will use cached data if available, or fetch it if not.
+        """
+        okx_symbol = self.symbol.replace('/', '-')
         timeframe = self.config['trading']['INTERVAL']
-        period_str = self.config['trading']['PERIOD']
-        now = datetime.utcnow()
-        unit = ''.join(filter(str.isalpha, period_str))
+        # Convert to OKX API format (e.g., '1d' -> '1D', '4h' -> '4H')
+        if 'd' in timeframe:
+            api_timeframe = timeframe.replace('d', 'D')
+        elif 'h' in timeframe:
+            api_timeframe = timeframe.replace('h', 'H')
+        else:
+            api_timeframe = timeframe
+
+        print(f"Fetching historical data for {okx_symbol} on timeframe {api_timeframe} via OKXDataFetcher...")
+
+        # The number of days to fetch can be derived from the 'PERIOD' config
+        period_str = self.config['trading'].get('PERIOD', '1y')
+        unit = ''.join(filter(str.isalpha, period_str)).lower()
         num = int(''.join(filter(str.isdigit, period_str)))
 
-        if unit == 'y': days = num * 365
-        elif unit == 'mo': days = num * 30
-        elif unit == 'w': days = num * 7
-        else: days = num # Default to days
-        since = self.exchange.parse8601((now - timedelta(days=days)).isoformat())
-        try:
-            ohlcv = self.exchange.fetch_ohlcv(self.symbol, timeframe, since, limit=1000)
-            if not ohlcv: return False
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df.set_index('timestamp', inplace=True)
-            self.df = df.dropna()
-            return True
-        except Exception as e:
-            print(f"Error fetching data for {self.symbol} on {timeframe}: {e}")
+        if unit == 'y':
+            days = num * 365
+        elif unit == 'mo':
+            days = num * 30
+        elif unit == 'w':
+            days = num * 7
+        elif unit == 'd':
+            days = num
+        else: # Default to days if unit is unrecognized
+            days = num
+
+        historical_data = self.okx_fetcher.fetch_historical_data(
+            symbol=okx_symbol,
+            timeframe=api_timeframe,
+            days_to_fetch=days
+        )
+
+        if not historical_data:
+            print(f"Error: Could not fetch historical data for {okx_symbol} on {timeframe}.")
             return False
+
+        df = pd.DataFrame(historical_data)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+
+        self.df = df.dropna()
+        return True
 
     def run_all_analyses(self):
         modules = {
@@ -109,7 +122,15 @@ class ComprehensiveTradingBot:
         elif total_score >= -2: main_action, confidence = "انتظار ⏳", 60
         elif total_score >= -6: main_action, confidence = "بيع 📉", 85
         else: main_action, confidence = "بيع قوي 🔻", 95
-        self.final_recommendation = {'symbol': self.symbol, 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),'current_price': self.df['close'].iloc[-1], 'main_action': main_action, 'confidence': confidence, 'total_score': total_score, 'individual_scores': scores}
+
+        # Get live price from the fetcher's cache
+        okx_symbol = self.symbol.replace('/', '-')
+        live_price_data = self.okx_fetcher.get_cached_price(okx_symbol)
+
+        # Fallback to the last close price from historical data if live price is not available
+        current_price = live_price_data['price'] if live_price_data else self.df['close'].iloc[-1]
+
+        self.final_recommendation = {'symbol': self.symbol, 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),'current_price': current_price, 'main_action': main_action, 'confidence': confidence, 'total_score': total_score, 'individual_scores': scores}
 
     def run_complete_analysis(self):
         """
