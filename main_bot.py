@@ -27,7 +27,6 @@ class ComprehensiveTradingBot:
         self.df = None
         self.analysis_results = {}
         self.final_recommendation = {}
-        self.exchange = None # ccxt exchange object is no longer used for fetching data
 
     def fetch_data(self) -> bool:
         """
