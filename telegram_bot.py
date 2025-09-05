@@ -83,10 +83,11 @@ def get_start_message_text() -> str:
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler for the /start command."""
+    # Per user request, this handler now directly presents the coin selection menu
+    # instead of the elaborate welcome message.
     await update.message.reply_text(
-        text=get_start_message_text(),
-        reply_markup=get_main_keyboard(),
-        parse_mode='HTML' # Using HTML for the bolding and other formatting
+        text="الرجاء اختيار عملة للتحليل:",
+        reply_markup=get_coin_list_keyboard()
     )
 
 async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -115,18 +116,25 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif callback_data.startswith("coin_"):
         symbol = callback_data.split("_", 1)[1]
-        await query.edit_message_text(text=f"جاري تحليل {symbol}، قد يستغرق هذا بعض الوقت...")
+        # The user requested to remove pre-analysis and post-analysis messages.
+        # The "Analyzing..." message is removed.
+        # await query.edit_message_text(text=f"جاري تحليل {symbol}، قد يستغرق هذا بعض الوقت...")
 
         try:
+            # We must answer the callback query to stop the loading icon on the user's client.
+            await query.answer()
+
             config = get_config()
             # Note: This will not work correctly as get_ranked_analysis_for_symbol now requires
             # the okx_fetcher instance, which is not available in this scope.
             # A larger refactor is needed to make the interactive bot fully functional.
             final_report = get_ranked_analysis_for_symbol(symbol, config, None) # Passing None temporarily
             send_telegram_message(final_report)
-            await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+            # The post-analysis message that returned to the main menu is also removed as requested.
+            # await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
         except Exception as e:
             logger.error(f"Error during analysis for {symbol}: {e}")
+            # It's good practice to inform the user if an error occurs.
             await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
 
 def main() -> None:
