@@ -116,7 +116,6 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif callback_data.startswith("coin_"):
         symbol = callback_data.split("_", 1)[1]
-        safe_symbol = escape_markdown_v2(symbol)
         await query.edit_message_text(
             text=f"اختر نوع التحليل لـ <code>{symbol}</code>:",
             reply_markup=get_analysis_timeframe_keyboard(symbol),
