@@ -6,9 +6,10 @@ class FibonacciAnalysis:
     """
     وحدة تحليل فيبوناتشي المتقدمة
     """
-    def __init__(self, df: pd.DataFrame, lookback_period: int = 90):
+    def __init__(self, df: pd.DataFrame, config: dict = None):
         self.df = df.copy()
-        self.lookback_period = lookback_period
+        if config is None: config = {}
+        self.lookback_period = config.get('FIB_LOOKBACK', 90)
         self.data = self.df.tail(lookback_period)
         self.current_price = self.data['close'].iloc[-1] if not self.data.empty else 0
         self.retracement_ratios = [0.236, 0.382, 0.5, 0.618, 0.786]

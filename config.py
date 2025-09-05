@@ -15,14 +15,7 @@ TRADING_CONFIG = {
     'MAX_RISK_PER_TRADE': 0.02,
 
     # الفريمات الزمنية التي سيتم تحليلها بالترتيب
-    'TIMEFRAMES_TO_ANALYZE': ['1d', '4h', '1h', '30m', '15m', '5m', '3m'],
-
-    # مجموعات الفريمات الزمنية لأنواع التحليل المختلفة
-    'TIMEFRAME_GROUPS': {
-        "long": ['1d', '4h', '1h'],
-        "medium": ['30m', '15m'],
-        "short": ['5m', '3m', '1m']
-    }
+    'TIMEFRAMES_TO_ANALYZE': ['1d', '4h', '1h', '30m', '15m', '5m', '3m']
 }
 
 EXCHANGE_CONFIG = {
@@ -38,12 +31,33 @@ TELEGRAM_CONFIG = {
 }
 
 ANALYSIS_CONFIG = {
+    # General
+    'ATR_PERIOD': 14,
+
+    # Trend Analysis
+    'TREND_SHORT_PERIOD': 20,
+    'TREND_MEDIUM_PERIOD': 50,
+    'TREND_LONG_PERIOD': 100,
+
+    # Channel Analysis
+    'CHANNEL_LOOKBACK': 50,
+
+    # S/R Analysis
+    'SR_LOOKBACK': 100,
+    'SR_TOLERANCE': 0.015, # Percentage for clustering levels into zones
+
+    # Fibonacci Analysis
+    'FIB_LOOKBACK': 90,
+
+    # Pattern Analysis
+    'PATTERN_LOOKBACK': 90,
+
+    # Old values - can be removed or kept for reference
     'LOOKBACK_PERIOD': 50,
     'PIVOT_WINDOW': 5,
     'MIN_PATTERN_BARS': 10,
-    'LEVEL_TOLERANCE': 0.005, # تم تعديله ليكون مناسبًا للفريمات الأصغر
-    'ATR_MULTIPLIER': 2.0,
-    'ATR_PERIOD': 14
+    'LEVEL_TOLERANCE': 0.005,
+    'ATR_MULTIPLIER': 2.0
 }
 
 WATCHLIST = [
