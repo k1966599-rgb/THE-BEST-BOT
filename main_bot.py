@@ -35,14 +35,14 @@ class ComprehensiveTradingBot:
         """
         okx_symbol = self.symbol.replace('/', '-')
         timeframe = self.config['trading']['INTERVAL']
-        # Convert to OKX API format (e.g., '1d' -> '1D', '4h' -> '4H', '30m' -> '30M')
+        # Convert to OKX API format.
+        # m = minutes, H = hours, D = Days. OKX is specific.
         if 'd' in timeframe:
             api_timeframe = timeframe.replace('d', 'D')
         elif 'h' in timeframe:
             api_timeframe = timeframe.replace('h', 'H')
-        elif 'm' in timeframe:
-            api_timeframe = timeframe.replace('m', 'M')
         else:
+            # For minutes (e.g., '1m', '30m'), OKX uses lowercase 'm'. No change needed.
             api_timeframe = timeframe
 
         print(f"Fetching historical data for {okx_symbol} on timeframe {api_timeframe} via OKXDataFetcher...")
@@ -93,8 +93,12 @@ class ComprehensiveTradingBot:
         for name, module_class in modules.items():
             try:
                 # Note: The comprehensive analysis method name is slightly different for some modules
+                # Standardize method names for clarity
                 if name == 'support_resistance':
                     method_name = 'get_comprehensive_sr_analysis'
+                elif name == 'patterns':
+                    # Use the new, more descriptive method name from the enhanced module
+                    method_name = 'get_comprehensive_patterns_analysis'
                 else:
                     method_name = f'get_comprehensive_{name}_analysis'
 
