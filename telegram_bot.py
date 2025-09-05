@@ -164,7 +164,7 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 return
 
             final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher, timeframes, analysis_name)
-
+            
             await query.message.reply_text(text=final_report, parse_mode='HTML')
             await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
         except Exception as e:
@@ -174,7 +174,7 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 def run_fetcher_service():
     """Function to run in a separate thread to manage the data fetcher."""
     global okx_fetcher
-
+    
     okx_symbols = [s.replace('/', '-') for s in WATCHLIST]
     okx_fetcher.start_data_services(okx_symbols)
     # Keep the thread alive while the fetcher is running
@@ -195,10 +195,10 @@ def main() -> None:
     # Initialize and start the data fetcher
     logger.info("🚀 Initializing OKX Data Fetcher...")
     okx_fetcher = OKXDataFetcher()
-
+    
     data_fetcher_thread = threading.Thread(target=run_fetcher_service, daemon=True)
     data_fetcher_thread.start()
-
+    
     logger.info("⏳ Waiting 5 seconds for initial data...")
     time.sleep(5)
 
