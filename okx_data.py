@@ -12,6 +12,34 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from okx_websocket_client import OKXWebSocketClient
 
+# Based on the analysis of logs, some timeframes are not supported for all pairs.
+# This list can be expanded or fetched dynamically in a future improvement.
+# OKX API uses '1H' for 1-hour, but internal config uses '1h'. The conversion is in main_bot.py.
+# This list uses the internal config format.
+SUPPORTED_COMBINATIONS = {
+    'BTC-USDT': ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1d'],
+    'ETH-USDT': ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '1d'],
+    # From logs, it seems ADA has issues with mid-range timeframes on OKX
+    'ADA-USDT': ['1m', '3m', '1h', '2h', '4h', '1d']
+}
+
+def validate_symbol_timeframe(symbol: str, timeframe: str):
+    """
+    Checks if a given symbol/timeframe combination is likely supported.
+    Raises ValueError if not found in the supported list.
+    The symbol format is 'BTC/USDT'.
+    """
+    okx_symbol = symbol.replace('/', '-')
+    supported_for_symbol = SUPPORTED_COMBINATIONS.get(okx_symbol)
+
+    # If the symbol is not explicitly listed, assume it has default support.
+    # This is a fallback to avoid breaking analysis for other coins in the watchlist.
+    if not supported_for_symbol:
+        supported_for_symbol = SUPPORTED_COMBINATIONS['BTC-USDT']
+
+    if timeframe not in supported_for_symbol:
+        raise ValueError(f"Timeframe {timeframe} is not supported for {symbol} on OKX.")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',

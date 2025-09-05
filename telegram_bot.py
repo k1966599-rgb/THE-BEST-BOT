@@ -78,7 +78,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         text=get_start_message_text(),
         reply_markup=get_main_keyboard(),
-        parse_mode='MarkdownV2'
+        parse_mode='HTML'
     )
 
 def get_analysis_timeframe_keyboard(symbol: str) -> InlineKeyboardMarkup:
@@ -99,15 +99,15 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     callback_data = query.data
 
     if callback_data == "start_menu":
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='MarkdownV2')
+        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "start_bot":
         bot_state["is_active"] = True
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='MarkdownV2')
+        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "stop_bot":
         bot_state["is_active"] = False
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='MarkdownV2')
+        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "analyze_menu":
         if not bot_state["is_active"]:
@@ -119,16 +119,15 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         symbol = callback_data.split("_", 1)[1]
         safe_symbol = escape_markdown_v2(symbol)
         await query.edit_message_text(
-            text=f"اختر نوع التحليل لـ `{safe_symbol}`:",
+            text=f"اختر نوع التحليل لـ <code>{symbol}</code>:",
             reply_markup=get_analysis_timeframe_keyboard(symbol),
-            parse_mode='MarkdownV2'
+            parse_mode='HTML'
         )
 
     elif callback_data.startswith("analyze_"):
         parts = callback_data.split("_")
         analysis_type = parts[1]
         symbol = "_".join(parts[2:])
-        safe_symbol = escape_markdown_v2(symbol)
 
         analysis_type_map = {
             "long": "استثمار طويل المدى (1D - 4H - 1H)",
@@ -138,8 +137,8 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         analysis_name = analysis_type_map.get(analysis_type, "غير محدد")
 
         await query.edit_message_text(
-            text=rf"جاري إعداد *{escape_markdown_v2(analysis_name)}* لـ `{safe_symbol}`\.\.\. قد يستغرق هذا بعض الوقت\.",
-            parse_mode='MarkdownV2'
+            text=f"جاري إعداد <b>{analysis_name}</b> لـ <code>{symbol}</code>... قد يستغرق هذا بعض الوقت.",
+            parse_mode='HTML'
         )
 
         try:
@@ -153,10 +152,10 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher, timeframes, analysis_name)
 
             # The report generator is now fully implemented.
-            await query.message.reply_text(text=final_report, parse_mode='MarkdownV2')
+            await query.message.reply_text(text=final_report, parse_mode='HTML')
 
             # Return to the main menu
-            await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='MarkdownV2')
+            await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
         except Exception as e:
             logger.error(f"Error during analysis for {symbol}: {e}")
             await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")

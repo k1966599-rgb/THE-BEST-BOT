@@ -15,21 +15,27 @@ from main_bot import ComprehensiveTradingBot
 from config import get_config, WATCHLIST
 from telegram_sender import send_telegram_message
 from report_generator import generate_final_report_text
-from okx_data import OKXDataFetcher
+from okx_data import OKXDataFetcher, validate_symbol_timeframe
 
 def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict, okx_fetcher: OKXDataFetcher) -> dict:
     """Runs the complete analysis for a single symbol on a specific timeframe."""
-    print(f"--- ⏳ Analyzing {symbol} on {timeframe} ---")
-    timeframe_config = copy.deepcopy(config)
-    timeframe_config['trading']['INTERVAL'] = timeframe
     try:
+        # First, validate if the timeframe is supported for the symbol
+        validate_symbol_timeframe(symbol, timeframe)
+
+        print(f"--- ⏳ Analyzing {symbol} on {timeframe} ---")
+        timeframe_config = copy.deepcopy(config)
+        timeframe_config['trading']['INTERVAL'] = timeframe
+
         bot = ComprehensiveTradingBot(symbol=symbol, config=timeframe_config, okx_fetcher=okx_fetcher)
         bot.run_complete_analysis()
         bot.final_recommendation['timeframe'] = timeframe
         return {'success': True, 'bot': bot}
     except Exception as e:
         print(f"❌ Exception during analysis of {symbol} on {timeframe}:")
-        traceback.print_exc()
+        # We don't print the full traceback for validation errors as they are expected.
+        if not isinstance(e, ValueError):
+            traceback.print_exc()
         return {'success': False, 'timeframe': timeframe, 'error': str(e)}
 
 def rank_opportunities(results: list) -> list:
