@@ -1,32 +1,41 @@
 from datetime import datetime
 from typing import Dict, List, Any
 
-# ======================================================================================
-# SECTION 1: TIMEFRAME-SPECIFIC FORMATTERS
-# ======================================================================================
-
-def _format_scenarios(p: Dict) -> str:
+def _format_scenarios(p: Dict, trend_analysis: Dict) -> str:
     if not p: return ""
     name = p.get('name', '')
-    text = "\n<b>📋 السيناريوهات المحتملة:</b>\n"
+    base_confidence = p.get('confidence', 60)
+    is_trending = trend_analysis.get('is_trending', False)
+
+    # Adjust probability based on trend confirmation
+    if is_trending:
+        primary_prob = min(base_confidence + 10, 85) # Cap at 85%
+    else:
+        primary_prob = base_confidence - 5
+
+    neutral_prob = 15
+    counter_prob = 100 - primary_prob - neutral_prob
+
     res_line = p.get('resistance_line', p.get('neckline', 0))
     sup_line = p.get('support_line', p.get('neckline', 0))
     if sup_line == 0: sup_line = p.get('support_line_start', 0)
     target = p.get('calculated_target', 0)
 
+    text = "\n<b>📋 السيناريوهات المحتملة:</b>\n"
     if "مثلث صاعد" in name or "علم صاعد" in name or "قاع مزدوج" in name: # Bullish Scenarios
-        text += f"🚀 <b>السيناريو الصاعد (احتمال 75%):</b> كسر المقاومة عند <code>${res_line:,.2f}</code> سيؤدي إلى هدف <code>${target:,.2f}</code>.\n"
-        text += f"⚡ <b>السيناريو المحايد (احتمال 15%):</b> التداول العرضي بين الدعم والمقاومة.\n"
-        text += f"📉 <b>السيناريو الهابط (احتمال 10%):</b> كسر الدعم عند <code>${sup_line:,.2f}</code> يلغي النموذج الإيجابي.\n"
+        text += f"🚀 <b>السيناريو الصاعد (احتمال {primary_prob}%):</b> كسر المقاومة عند <code>${res_line:,.2f}</code> سيؤدي إلى هدف <code>${target:,.2f}</code>.\n"
+        text += f"⚡ <b>السيناريو المحايد (احتمال {neutral_prob}%):</b> التداول العرضي بين الدعم والمقاومة.\n"
+        text += f"📉 <b>السيناريو الهابط (احتمال {counter_prob}%):</b> كسر الدعم عند <code>${sup_line:,.2f}</code> يلغي النموذج الإيجابي.\n"
     elif "قمة مزدوجة" in name or "رأس وكتفين" in name: # Bearish Scenarios
-        text += f"📉 <b>السيناريو الهابط (احتمال 75%):</b> كسر الدعم عند <code>${sup_line:,.2f}</code> سيؤدي إلى هدف <code>${target:,.2f}</code>.\n"
-        text += f"⚡ <b>السيناريو المحايد (احتمال 15%):</b> التداول العرضي بين الدعم والمقاومة.\n"
-        text += f"🚀 <b>السيناريو الصاعد (احتمال 10%):</b> اختراق المقاومة عند <code>${res_line:,.2f}</code> يلغي النموذج السلبي.\n"
+        text += f"📉 <b>السيناريو الهابط (احتمال {primary_prob}%):</b> كسر الدعم عند <code>${sup_line:,.2f}</code> سيؤدي إلى هدف <code>${target:,.2f}</code>.\n"
+        text += f"⚡ <b>السيناريو المحايد (احتمال {neutral_prob}%):</b> التداول العرضي بين الدعم والمقاومة.\n"
+        text += f"🚀 <b>السيناريو الصاعد (احتمال {counter_prob}%):</b> اختراق المقاومة عند <code>${res_line:,.2f}</code> يلغي النموذج السلبي.\n"
     else:
         return ""
     return text
 
 def _format_patterns_for_timeframe(analysis: Dict) -> str:
+    # ... (code is unchanged)
     patterns = analysis.get('found_patterns', [])
     if not patterns: return "<b>🔍 النموذج الكلاسيكي المكتشف</b>\n- <i>لم يتم العثور على نموذج واضح.</i>"
     p = patterns[0]
@@ -40,7 +49,9 @@ def _format_patterns_for_timeframe(analysis: Dict) -> str:
     details += f"- **الهدف المحسوب:** <code>${p.get('calculated_target', 0):,.2f}</code>"
     return f"<b>🔍 النموذج الكلاسيكي المكتشف</b>\n<b>{name}</b>\n{details}"
 
+
 def _format_sr(analysis: Dict, current_price: float) -> str:
+    # ... (code is unchanged)
     demand_zones = analysis.get('all_demand_zones', [])
     supply_zones = analysis.get('all_supply_zones', [])
     demand_text = ""
@@ -55,20 +66,12 @@ def _format_sr(analysis: Dict, current_price: float) -> str:
     else: supply_text = "- <i>لا توجد مناطق عرض واضحة.</i>\n"
     return f"<b>🟢 مناطق الطلب والدعوم:</b>\n{demand_text}\n<b>🔴 مناطق العرض والمقاومات:</b>\n{supply_text}"
 
-def _format_fibonacci(analysis: Dict, current_price: float) -> str:
-    levels = analysis.get('retracement_levels', [])
-    if not levels: return "<b>🌊 مستويات فيبوناتشي:</b>\n- <i>غير متاحة حالياً.</i>\n"
-    fib_text = ""
-    for level in levels:
-        if level.get('level') in ['23.6%', '38.2%', '50.0%', '61.8%']:
-            fib_text += f"- <b>{level.get('level')}:</b> <code>${level.get('price', 0):,.2f}</code>\n"
-    return f"<b>🌊 مستويات فيبوناتشي:</b>\n{fib_text}"
 
 def _format_timeframe_analysis(result: Dict, priority: int) -> str:
     bot = result.get('bot')
     if not bot: return ""
     rec, analysis = bot.final_recommendation, bot.analysis_results
-    tm, indicators, patterns_data = analysis.get('trade_management', {}), analysis.get('indicators', {}), analysis.get('patterns', {})
+    tm, indicators, patterns_data, trends_data = analysis.get('trade_management', {}), analysis.get('indicators', {}), analysis.get('patterns', {}), analysis.get('trends', {})
     
     timeframe_map = {"1d": "يومي", "4h": "4 ساعات", "1h": "1 ساعة", "30m": "30 دقيقة", "15m": "15 دقيقة", "5m": "5 دقائق", "3m": "3 دقائق", "1m": "دقيقة"}
     timeframe_name = timeframe_map.get(rec.get('timeframe', 'N/A'), rec.get('timeframe', 'N/A'))
@@ -83,10 +86,10 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
 """
     patterns_section = _format_patterns_for_timeframe(patterns_data)
     sr_section = _format_sr(analysis.get('support_resistance', {}), rec.get('current_price', 0))
-    fib_section = _format_fibonacci(analysis.get('fibonacci', {}), rec.get('current_price', 0))
 
     found_patterns = patterns_data.get('found_patterns', [])
-    scenarios_section = _format_scenarios(found_patterns[0] if found_patterns else None)
+    # Pass trend analysis data to the scenarios function
+    scenarios_section = _format_scenarios(found_patterns[0] if found_patterns else None, trends_data)
 
     goals_section = f"""
 <b>🎯 أهداف وإدارة المخاطر:</b>
@@ -96,12 +99,9 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
     if found_patterns:
         goals_section += f"- <b>الهدف من النموذج:</b> <code>${found_patterns[0].get('calculated_target', 0):,.2f}</code>"
 
-    return main_data + "\n" + patterns_section + "\n<b>🎯 المستويات الحرجة</b>\n" + sr_section + fib_section + goals_section + scenarios_section
+    return main_data + "\n" + patterns_section + "\n<b>🎯 المستويات الحرجة</b>\n" + sr_section + goals_section + scenarios_section
 
-# ======================================================================================
-# SECTION 2: GENERALIZED EXECUTIVE SUMMARY
-# ======================================================================================
-
+# ... (rest of the file is unchanged)
 def _format_executive_summary(ranked_results: list, current_price: float) -> str:
     if not ranked_results: return ""
     best_bot = ranked_results[0].get('bot')
@@ -138,10 +138,6 @@ def _format_executive_summary(ranked_results: list, current_price: float) -> str
 
     return summary_text
 
-# ======================================================================================
-# SECTION 3: MAIN REPORT GENERATOR (FINAL, GENERALIZED VERSION)
-# ======================================================================================
-
 def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: list) -> str:
     """Generates the final, detailed, and fully dynamic technical analysis report."""
     if not ranked_results or not any(r.get('success') for r in ranked_results):
@@ -162,19 +158,14 @@ def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: 
 - <b>السعر الحالي:</b> <code>${current_price:,.2f}</code>  
 - <b>نوع التحليل:</b> {analysis_type}
 """
-    # Canonical order for ALL supported timeframes to ensure consistent report structure
-    # regardless of which timeframes were analyzed.
     canonical_order = ['1d', '4h', '2h', '1h', '30m', '15m', '5m', '3m', '1m']
 
     def get_sort_key(result):
         timeframe = result['bot'].final_recommendation.get('timeframe', 'N/A')
         return canonical_order.index(timeframe) if timeframe in canonical_order else 99
 
-    # Sort the actual successful results based on the canonical order
     sorted_results = sorted(successful_results, key=get_sort_key)
 
-    # Iterate through the SORTED, successful results and build the report.
-    # This is now fully dynamic and not hardcoded to any specific timeframe set.
     for i, result in enumerate(sorted_results):
         report += _format_timeframe_analysis(result, priority=i)
 
