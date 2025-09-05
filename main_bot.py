@@ -35,11 +35,13 @@ class ComprehensiveTradingBot:
         """
         okx_symbol = self.symbol.replace('/', '-')
         timeframe = self.config['trading']['INTERVAL']
-        # Convert to OKX API format (e.g., '1d' -> '1D', '4h' -> '4H')
+        # Convert to OKX API format (e.g., '1d' -> '1D', '4h' -> '4H', '30m' -> '30M')
         if 'd' in timeframe:
             api_timeframe = timeframe.replace('d', 'D')
         elif 'h' in timeframe:
             api_timeframe = timeframe.replace('h', 'H')
+        elif 'm' in timeframe:
+            api_timeframe = timeframe.replace('m', 'M')
         else:
             api_timeframe = timeframe
 
