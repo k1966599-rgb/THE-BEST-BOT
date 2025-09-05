@@ -15,3 +15,6 @@ build/
 # IDE settings
 .vscode/
 .idea/
+
+# Virtual environment
+venv/
