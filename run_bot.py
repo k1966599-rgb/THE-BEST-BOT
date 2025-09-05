@@ -5,7 +5,6 @@ from datetime import datetime
 import time
 import copy
 import traceback
-import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -48,7 +47,7 @@ def rank_opportunities(results: list) -> list:
             res['rank_score'] = -1
     return sorted(results, key=lambda x: x.get('rank_score', -1), reverse=True)
 
-from typing import List, Optional
+from typing import List
 
 def get_top_20_symbols(okx_fetcher: OKXDataFetcher) -> List[str]:
     """Fetches all tickers and returns the top 20 by USDT volume."""
@@ -70,28 +69,17 @@ def get_top_20_symbols(okx_fetcher: OKXDataFetcher) -> List[str]:
     print(f"Top 20 symbols by volume: {top_20_symbols}")
     return top_20_symbols
 
-def get_ranked_analysis_for_symbol(symbol: str, config: dict, okx_fetcher: OKXDataFetcher, timeframes_to_analyze: Optional[List[str]] = None) -> str:
+def get_ranked_analysis_for_symbol(symbol: str, config: dict, okx_fetcher: OKXDataFetcher) -> str:
     """
-    Performs multi-timeframe analysis in parallel and returns a single, formatted report string.
-    Can analyze a specific list of timeframes if provided, otherwise uses the default from config.
+    Performs multi-timeframe analysis and returns a single, formatted report string.
     """
-    if timeframes_to_analyze:
-        timeframes = timeframes_to_analyze
-    else:
-        timeframes = config['trading'].get('TIMEFRAMES_TO_ANALYZE', ['1d'])
-
-    print(f"📊 Starting PARALLEL analysis for {symbol} on {len(timeframes)} timeframes: {timeframes}...")
-
+    timeframes = config['trading'].get('TIMEFRAMES_TO_ANALYZE', ['1d'])
+    print(f"📊 تحليل {symbol} على {len(timeframes)} فريمات زمنية...")
     all_timeframe_results = []
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Use executor.map to run analyses in parallel.
-        # The lambda function provides the fixed arguments (symbol, config, fetcher)
-        # to the analysis function for each timeframe in the list.
-        results_iterator = executor.map(
-            lambda tf: run_analysis_for_timeframe(symbol, tf, config, okx_fetcher),
-            timeframes
-        )
-        all_timeframe_results = list(results_iterator)
+    for timeframe in timeframes:
+        result = run_analysis_for_timeframe(symbol, timeframe, config, okx_fetcher)
+        all_timeframe_results.append(result)
+        if len(timeframes) > 1: time.sleep(1)
 
     ranked_results = rank_opportunities(all_timeframe_results)
 

@@ -29,26 +29,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from okx_websocket_client import OKXWebSocketClient
-
 class OKXDataFetcher:
-    """
-    Fetches historical and REST-based data from OKX.
-    Manages the WebSocket client for live data.
-    """
+    """جامع البيانات المباشرة من منصة OKX"""
 
     def __init__(self, data_dir: str = 'okx_data'):
         self.base_url = 'https://www.okx.com'
+        self.ws_url = 'wss://ws.okx.com:8443/ws/v5/public'
         self.data_dir = Path(data_dir)
         self.price_cache = {}
         self.historical_cache = {}
+        self.ws_connection = None
+        self.is_connected = False
+        self.reconnect_interval = 5
         self._stop_event = threading.Event()
-
-        # Create an instance of the WebSocket client, passing the shared resources
-        self.websocket_client = OKXWebSocketClient(
-            price_cache=self.price_cache,
-            stop_event=self._stop_event
-        )
 
         # العملات الافتراضية
         self.default_symbols = [
@@ -144,17 +137,9 @@ class OKXDataFetcher:
         return 1 # Default to 1 minute to avoid division by zero errors
 
     def fetch_historical_data(self, symbol: str = 'BTC-USDT', timeframe: str = '1D', days_to_fetch: int = 365) -> List[Dict]:
-        """
-        Fetches historical data by paginating backwards from the current time.
-        It now checks an in-memory cache first to avoid redundant network requests.
-        """
-        # Check cache first
-        if symbol in self.historical_cache:
-            logger.info(f"✅ Found historical data for {symbol} in cache.")
-            return self.historical_cache[symbol]
-
+        """Fetches historical data by paginating backwards from the current time."""
         try:
-            logger.info(f"📊 Fetching historical data for {symbol} for the last {days_to_fetch} days from network...")
+            logger.info(f"📊 Fetching historical data for {symbol} for the last {days_to_fetch} days...")
 
             all_candles = []
             # For the first request, 'before' is None to get the latest data.
@@ -234,6 +219,84 @@ class OKXDataFetcher:
             logger.error(f"❌ خطأ في جلب البيانات التاريخية لـ {symbol}: {e}")
             return []
 
+    async def start_websocket(self, symbols: List[str] = None):
+        """بدء اتصال WebSocket للبيانات المباشرة"""
+        if symbols is None:
+            symbols = self.default_symbols
+
+        while not self._stop_event.is_set():
+            try:
+                logger.info("🔗 محاولة الاتصال بـ WebSocket...")
+
+                async with websockets.connect(self.ws_url) as websocket:
+                    self.ws_connection = websocket
+                    self.is_connected = True
+                    logger.info("✅ تم الاتصال بـ WebSocket")
+
+                    # الاشتراك في تحديثات الأسعار
+                    subscribe_message = {
+                        "op": "subscribe",
+                        "args": [{"channel": "tickers", "instId": symbol} for symbol in symbols]
+                    }
+
+                    await websocket.send(json.dumps(subscribe_message))
+                    logger.info(f"📡 تم الاشتراك في {len(symbols)} رمز عملة")
+
+                    # Receive messages
+                    while not self._stop_event.is_set():
+                        try:
+                            message = await asyncio.wait_for(websocket.recv(), timeout=1.0)
+                            data = json.loads(message)
+                            if 'data' in data and data.get('data'):
+                                await self._process_websocket_data(data['data'])
+                        except asyncio.TimeoutError:
+                            # No message received, which is fine. This allows the loop to check the stop event.
+                            continue
+                        except websockets.exceptions.ConnectionClosed:
+                            logger.warning("WebSocket connection closed. Attempting to reconnect...")
+                            break
+                        except Exception as e:
+                            logger.error(f"❌ Error processing WebSocket message: {e}")
+
+            except Exception as e:
+                logger.error(f"❌ WebSocket error: {e}")
+            finally:
+                self.is_connected = False
+                if not self._stop_event.is_set():
+                    logger.info(f"⏳ Reconnecting in {self.reconnect_interval} seconds...")
+                    await asyncio.sleep(self.reconnect_interval)
+
+    async def _process_websocket_data(self, data_list: List[Dict]):
+        """معالجة بيانات WebSocket"""
+        try:
+            for ticker in data_list:
+                price_data = {
+                    'symbol': ticker['instId'],
+                    'price': float(ticker['last']),
+                    'change_24h': float(ticker.get('chg24h', 0)),
+                    'change_percent': float(ticker.get('chgPct24h', 0)),
+                    'high_24h': float(ticker.get('high24h', 0)),
+                    'low_24h': float(ticker.get('low24h', 0)),
+                    'volume': float(ticker.get('vol24h', 0)),
+                    'timestamp': int(ticker.get('ts', 0)),
+                    'last_update': datetime.now().isoformat()
+                }
+
+                # تحديث الكاش
+                self.price_cache[ticker['instId']] = price_data
+
+                # طباعة التحديث
+                change_icon = '📈' if price_data['change_percent'] >= 0 else '📉'
+                logger.info(
+                    f"{change_icon} {ticker['instId']}: ${price_data['price']:.4f} "
+                    f"({'+' if price_data['change_percent'] >= 0 else ''}{price_data['change_percent']:.2f}%)"
+                )
+
+            # حفظ التحديثات
+            self._save_price_data(self.price_cache)
+
+        except Exception as e:
+            logger.error(f"❌ خطأ في معالجة بيانات WebSocket: {e}")
 
     def _save_price_data(self, prices: Dict[str, Any]):
         """حفظ أسعار اللحظة الحالية"""
@@ -389,7 +452,7 @@ class OKXDataFetcher:
         overview = {
             'timestamp': datetime.now().isoformat(),
             'total_symbols': len(self.price_cache),
-            'connected': self.websocket_client.is_connected,
+            'connected': self.is_connected,
             'top_gainers': [],
             'top_losers': [],
             'market_summary': {
@@ -457,8 +520,15 @@ class OKXDataFetcher:
         # جلب الأسعار الحالية
         self.fetch_current_prices(symbols)
 
-        # Start the WebSocket client
-        self.websocket_client.start(symbols)
+        # بدء WebSocket في thread منفصل
+        def start_ws():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.start_websocket(symbols))
+
+        ws_thread = threading.Thread(target=start_ws)
+        ws_thread.daemon = True
+        ws_thread.start()
 
         # انتظار انتهاء جلب البيانات التاريخية
         historical_thread.join()

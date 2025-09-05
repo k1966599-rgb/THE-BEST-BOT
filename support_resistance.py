@@ -8,10 +8,11 @@ class SupportResistanceAnalysis:
     وحدة تحليل الدعوم والمقاومة المتقدمة
     تحدد مناطق العرض والطلب وتوفر بيانات مفصلة للتقارير.
     """
-    def __init__(self, df: pd.DataFrame, lookback_period: int = 100, tolerance: float = 0.015):
+    def __init__(self, df: pd.DataFrame, config: dict = None):
         self.df = df.copy()
-        self.lookback_period = lookback_period
-        self.tolerance = tolerance
+        if config is None: config = {}
+        self.lookback_period = config.get('SR_LOOKBACK', 100)
+        self.tolerance = config.get('SR_TOLERANCE', 0.015)
 
     def find_all_levels(self) -> Dict[str, List[Dict]]:
         data = self.df.tail(self.lookback_period)
@@ -73,14 +74,14 @@ class SupportResistanceAnalysis:
         demand_zones = sorted([z for z in support_zones if z['end'] < current_price], key=lambda x: x['strength_score'], reverse=True)
         supply_zones = sorted([z for z in resistance_zones if z['start'] > current_price], key=lambda x: x['strength_score'], reverse=True)
 
-        # Add distance calculation to all zones
-        for zone in demand_zones:
-            zone['distance'] = current_price - zone['end']
-        for zone in supply_zones:
-            zone['distance'] = zone['start'] - current_price
-
         primary_demand = demand_zones[0] if demand_zones else None
         primary_supply = supply_zones[0] if supply_zones else None
+
+        # Add distance calculation
+        if primary_demand:
+            primary_demand['distance'] = current_price - primary_demand['end']
+        if primary_supply:
+            primary_supply['distance'] = primary_supply['start'] - current_price
 
         sr_score = 0
         if primary_demand: sr_score += primary_demand.get('strength_score', 0) / 2
@@ -89,7 +90,5 @@ class SupportResistanceAnalysis:
         return {
             'primary_demand_zone': primary_demand,
             'primary_supply_zone': primary_supply,
-            'all_demand_zones': demand_zones,
-            'all_supply_zones': supply_zones,
             'sr_score': round(sr_score, 2)
         }

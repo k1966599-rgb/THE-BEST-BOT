@@ -87,6 +87,7 @@ class ComprehensiveTradingBot:
             'fibonacci': FibonacciAnalysis,
             'patterns': ClassicPatterns
         }
+        analysis_config = self.config.get('analysis', {})
         for name, module_class in modules.items():
             try:
                 # Note: The comprehensive analysis method name is slightly different for some modules
@@ -95,7 +96,7 @@ class ComprehensiveTradingBot:
                 else:
                     method_name = f'get_comprehensive_{name}_analysis'
 
-                instance = module_class(self.df)
+                instance = module_class(self.df, config=analysis_config)
                 self.analysis_results[name] = getattr(instance, method_name)()
             except Exception as e:
                 self.analysis_results[name] = {'error': str(e), 'total_score': 0, 'sr_score': 0, 'fib_score': 0, 'pattern_score': 0}

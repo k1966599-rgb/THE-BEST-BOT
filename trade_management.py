@@ -41,14 +41,8 @@ class TradeManagement:
     def get_trade_levels(self, analysis_results: Dict) -> Dict[str, Any]:
         """تحديد مستويات الدخول، وقف الخسارة، وجني الأرباح"""
         sr_analysis = analysis_results.get('support_resistance', {})
-
-        # Fix: Use the correct data keys from support_resistance.py
-        demand_zone = sr_analysis.get('primary_demand_zone')
-        supply_zone = sr_analysis.get('primary_supply_zone')
-
-        # Use the top of the demand zone as support and the bottom of the supply zone as resistance
-        nearest_support = demand_zone.get('end') if demand_zone else None
-        nearest_resistance = supply_zone.get('start') if supply_zone else None
+        nearest_support = sr_analysis.get('nearest_support', {}).get('price')
+        nearest_resistance = sr_analysis.get('nearest_resistance', {}).get('price')
 
         atr = self.df['high'].iloc[-14:].max() - self.df['low'].iloc[-14:].min()
 
