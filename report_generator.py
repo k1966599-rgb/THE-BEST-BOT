@@ -10,17 +10,17 @@ def escape_markdown_v2(text: str) -> str:
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
 def format_timeframe_analysis(result: Dict[str, Any], current_price: float, priority: int) -> str:
-    """Formats the detailed analysis for a single timeframe."""
+    """Formats the detailed analysis for a single timeframe with defensive data access."""
     bot = result.get('bot')
     if not bot:
         return ""
 
-    rec = bot.final_recommendation
-    analysis = bot.analysis_results
-    tm = analysis.get('trade_management', {})
-    sr = analysis.get('support_resistance', {})
-    fib = analysis.get('fibonacci', {})
-    indicators = analysis.get('indicators', {})
+    rec = bot.final_recommendation or {}
+    analysis = bot.analysis_results or {}
+    tm = analysis.get('trade_management', {}) or {}
+    sr = analysis.get('support_resistance', {}) or {}
+    fib = analysis.get('fibonacci', {}) or {}
+    indicators = analysis.get('indicators', {}) or {}
 
     timeframe = rec.get('timeframe', 'N/A')
     signal_strength = rec.get('confidence', 0)
@@ -29,16 +29,16 @@ def format_timeframe_analysis(result: Dict[str, Any], current_price: float, prio
     rsi = indicators.get('rsi', 0.0)
     macd_status = "إيجابي" if indicators.get('macd_is_bullish') else "سلبي"
 
-    # --- Critical Levels ---
+    # --- Critical Levels (Safely accessed) ---
     demand_zones_text = ""
     all_demands = sr.get('all_demand_zones', [])
     if all_demands:
         high_demand = next((z for z in all_demands if z.get('strength_text') == "عالية"), None)
         very_high_demand = next((z for z in all_demands if z.get('strength_text') == "عالية جداً"), None)
         if very_high_demand:
-            demand_zones_text += f"- *دعم عالي جداً:* `${very_high_demand['end']:,.2f}` \\(المسافة: `${very_high_demand['distance']:,.2f}`\\)\n"
+            demand_zones_text += f"- *دعم عالي جداً:* `${very_high_demand.get('end', 0):,.2f}` \\(المسافة: `${very_high_demand.get('distance', 0):,.2f}`\\)\n"
         if high_demand:
-             demand_zones_text += f"- *منطقة طلب عالية:* `${high_demand['start']:,.2f} - ${high_demand['end']:,.2f}`\n"
+             demand_zones_text += f"- *منطقة طلب عالية:* `${high_demand.get('start', 0):,.2f} - ${high_demand.get('end', 0):,.2f}`\n"
     if not demand_zones_text:
         demand_zones_text = "- *غير محددة حالياً*\n"
 
@@ -47,30 +47,31 @@ def format_timeframe_analysis(result: Dict[str, Any], current_price: float, prio
     if all_supplies:
         weak_supply = next((z for z in all_supplies if z.get('strength_text') == "ضعيفة"), None)
         if weak_supply:
-            supply_zones_text += f"- *مقاومة ضعيفة:* `${weak_supply['start']:,.2f}` \\(المسافة: `${weak_supply['distance']:,.2f}`\\)\n"
+            supply_zones_text += f"- *مقاومة ضعيفة:* `${weak_supply.get('start', 0):,.2f}` \\(المسافة: `${weak_supply.get('distance', 0):,.2f}`\\)\n"
     if not supply_zones_text:
         supply_zones_text = "- *غير محددة حالياً*\n"
 
-    # --- Fibonacci Levels ---
+    # --- Fibonacci Levels (Safely accessed) ---
     fib_text = ""
     fib_levels = fib.get('retracement_levels', [])
     if fib_levels:
-        fib_23 = next((f for f in fib_levels if f['level'] == '23.6%'), None)
-        fib_38 = next((f for f in fib_levels if f['level'] == '38.2%'), None)
-        if fib_23 and fib_23['price'] < current_price:
-            fib_text += f"- *23\\.6%:* `${fib_23['price']:,.2f}` \\(دعم فني\\)\n"
-        if fib_38 and fib_38['price'] < current_price:
+        fib_23 = next((f for f in fib_levels if f.get('level') == '23.6%'), None)
+        fib_38 = next((f for f in fib_levels if f.get('level') == '38.2%'), None)
+        if fib_23 and fib_23.get('price', 0) < current_price:
+            fib_text += f"- *23\\.6%:* `${fib_23.get('price', 0):,.2f}` \\(دعم فني\\)\n"
+        if fib_38 and fib_38.get('price', 0) < current_price:
              fib_text += f"- السعر يحتفظ بمستوى *38\\.2%* كدعم\n"
     if not fib_text:
         fib_text = "لا توجد مستويات فيبوناتشي مؤثرة حالياً\n"
 
-    # --- Positive Indicators ---
-    # This is a simplified version; a more complex mapping can be done.
+    # --- Positive Indicators (Safely generated) ---
     positive_indicators = []
-    if any(d['end'] < current_price for d in all_demands):
+    if all_demands and any(d.get('end', 0) < current_price for d in all_demands):
         positive_indicators.append("✅ السعر قريب من منطقة دعم قوية")
-    if fib_38 and fib_38['price'] < current_price:
-        positive_indicators.append("✅ مستوى فيبوناتشي 38\\.2% يحتفظ كدعم")
+    if fib_levels:
+        fib_38_support = next((f for f in fib_levels if f.get('level') == '38.2%' and f.get('price', 0) < current_price), None)
+        if fib_38_support:
+            positive_indicators.append("✅ مستوى فيبوناتشي 38\\.2% يحتفظ كدعم")
 
     pos_indicators_text = "\n".join(positive_indicators) if positive_indicators else "❌ لا توجد مؤشرات إيجابية واضحة حالياً"
 
@@ -81,14 +82,11 @@ def format_timeframe_analysis(result: Dict[str, Any], current_price: float, prio
         neutral_prob = 25
         bearish_prob = 15
 
-    # --- Stop Loss & Targets ---
     stop_loss = tm.get('stop_loss', 0)
     target1 = tm.get('profit_target', 0)
 
-    # --- Icons ---
     priority_icons = ["🥇", "🥈", "🥉"]
     icon = priority_icons[priority] if priority < len(priority_icons) else "🔹"
-
     action_icon = "🚀" if "شراء" in action else "📈" if "انتظار" in action else "📉"
 
     # --- Build Report ---
@@ -99,7 +97,7 @@ def format_timeframe_analysis(result: Dict[str, Any], current_price: float, prio
 
 ### 📈 المعطيات الأساسية
 - *قوة الإشارة:* {signal_strength}% \\| {escape_markdown_v2(action)} {action_icon}
-- *نقطة الدخول:* `${entry_point:,.2f}`
+- *نقطة الدخول:* `${tm.get('entry_price', 0):,.2f}`
 - *مستوى RSI:* {rsi:.1f}
 - *مؤشر MACD:* {escape_markdown_v2(macd_status)}
 
@@ -110,7 +108,6 @@ def format_timeframe_analysis(result: Dict[str, Any], current_price: float, prio
 {supply_zones_text}
 #### 🌊 مستويات فيبوناتشي:
 {fib_text}
-
 ### 📊 المؤشرات الفنية الإيجابية ({len(positive_indicators)}/12):
 {pos_indicators_text}
 
@@ -138,18 +135,19 @@ def format_timeframe_analysis(result: Dict[str, Any], current_price: float, prio
     return report
 
 def generate_executive_summary(ranked_results: list, current_price: float) -> str:
-    if not ranked_results:
-        return ""
+    if not ranked_results: return ""
 
-    best_result = ranked_results[0]['bot']
-    rec = best_result.final_recommendation
-    tm = best_result.analysis_results.get('trade_management', {})
+    best_result_bot = ranked_results[0].get('bot')
+    if not best_result_bot: return ""
 
-    # Extract targets from different timeframes for a richer summary
+    rec = best_result_bot.final_recommendation or {}
+    tm = best_result_bot.analysis_results.get('trade_management', {}) or {}
+
     long_term_target = 0
     for r in ranked_results:
-        if r['bot'].final_recommendation.get('timeframe') == '1d':
-            long_term_target = r['bot'].analysis_results.get('trade_management', {}).get('profit_target', 0)
+        bot = r.get('bot')
+        if bot and bot.final_recommendation.get('timeframe') == '1d':
+            long_term_target = bot.analysis_results.get('trade_management', {}).get('profit_target', 0)
 
     report = f"""
 ---
@@ -170,14 +168,19 @@ def generate_executive_summary(ranked_results: list, current_price: float) -> st
     return report
 
 def generate_quick_trade_plan(ranked_results: list, current_price: float) -> str:
-    if not ranked_results:
-        return ""
+    if not ranked_results: return ""
 
-    best_result = ranked_results[0]['bot']
-    rec = best_result.final_recommendation
-    tm = best_result.analysis_results.get('trade_management', {})
+    best_result_bot = ranked_results[0].get('bot')
+    if not best_result_bot: return ""
 
-    risk_reward_ratio = (tm.get('profit_target', 0) - tm.get('entry_price', 1)) / (tm.get('entry_price', 1) - tm.get('stop_loss', 1)) if (tm.get('entry_price', 1) - tm.get('stop_loss', 1)) != 0 else 0
+    rec = best_result_bot.final_recommendation or {}
+    tm = best_result_bot.analysis_results.get('trade_management', {}) or {}
+
+    entry = tm.get('entry_price', 0)
+    stop = tm.get('stop_loss', 0)
+    target = tm.get('profit_target', 0)
+
+    risk_reward_ratio = (target - entry) / (entry - stop) if (entry - stop) != 0 else 0
 
     report = f"""
 ---
@@ -188,17 +191,14 @@ def generate_quick_trade_plan(ranked_results: list, current_price: float) -> str
 **🟢 {escape_markdown_v2(rec.get('main_action', ''))} الآن** \\- إشارة قوية {rec.get('confidence', 0)}%
 
 ### 📊 بيانات التنفيذ الفورية:
-- *💰 الدخول:* `${tm.get('entry_price', current_price):,.2f}` \\(السعر الحالي\\)
-- *🛑 وقف الخسارة:* `${tm.get('stop_loss', 0):,.2f}`
-- *🎯 الهدف السريع:* `${tm.get('profit_target', 0):,.2f}`
+- *💰 الدخول:* `${entry:,.2f}` \\(السعر الحالي\\)
+- *🛑 وقف الخسارة:* `${stop:,.2f}`
+- *🎯 الهدف السريع:* `${target:,.2f}`
 - *📈 نسبة المخاطرة للربح:* {risk_reward_ratio:.2f}:1
 """
     return report
 
 def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: list) -> str:
-    """
-    Generates the comprehensive, user-specified technical analysis report.
-    """
     if not ranked_results or not any(r.get('success') for r in ranked_results):
         return f"❌ تعذر إنشاء تقرير لـ {symbol}\\."
 
@@ -206,12 +206,13 @@ def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: 
     if not successful_results:
         return f"❌ لا توجد بيانات ناجحة لإنشاء تقرير لـ {symbol}\\."
 
-    # Use the first successful result to get exchange and current price
-    first_result = successful_results[0]['bot']
-    exchange = first_result.config['trading'].get('EXCHANGE_ID', 'OKX')
-    current_price = first_result.final_recommendation.get('current_price', 0)
+    first_result_bot = successful_results[0].get('bot')
+    if not first_result_bot:
+        return f"❌ خطأ في بيانات التحليل لـ {symbol}\\."
 
-    # --- Main Info ---
+    exchange = first_result_bot.config.get('trading', {}).get('EXCHANGE_ID', 'OKX')
+    current_price = first_result_bot.final_recommendation.get('current_price', 0)
+
     symbol_formatted = escape_markdown_v2(symbol.replace("/", "\\-"))
     current_time = escape_markdown_v2(datetime.now().strftime("%Y\\-%m\\-%d | %H:%M:%S"))
 
@@ -224,15 +225,12 @@ def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: 
 - *نوع التحليل:* {escape_markdown_v2(analysis_type)}
 """
 
-    # --- Timeframe Analysis ---
     for i, result in enumerate(successful_results):
         report += format_timeframe_analysis(result, current_price, priority=i)
 
-    # --- Summaries ---
     report += generate_executive_summary(successful_results, current_price)
     report += generate_quick_trade_plan(successful_results, current_price)
 
-    # --- Disclaimer ---
     report += """
 ---
 
