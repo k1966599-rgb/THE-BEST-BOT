@@ -41,57 +41,68 @@ def get_coin_list_keyboard() -> InlineKeyboardMarkup:
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="start_menu")])
     return InlineKeyboardMarkup(keyboard)
 
-def get_start_message_text() -> str:
-    """Creates the new, elaborate start message text."""
+def get_welcome_message() -> str:
+    """Creates the new welcome message text based on the user's template."""
     config = get_config()
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     status = "🟢 متصل وجاهز للعمل" if bot_state["is_active"] else "🔴 متوقف"
     platform = config['trading'].get('EXCHANGE_ID', 'N/A').upper()
 
-    # This is the user's requested format
     text = (
-        "╔═══════════════════════════════════════╗\n"
-        "║            💎 THE BEST BOT 💎           ║\n"
-        "║         🎯 نظام التحليل الفني المتقدم 🎯         ║\n"
-        "╚═══════════════════════════════════════╝\n\n"
-        f"🕐 **التوقيت:** {current_time}\n"
-        f"📶 **حالة النظام:** {status}\n"
-        f"🌐 **المنصة:** 🏛️ {platform} Exchange\n\n"
-        "═══════════════════════════════════════\n\n"
-        "📋 **الخدمات المتوفرة:**\n\n"
-        "🔍 **التحليل الفني الشامل** ⚡\n"
-        "   💰 تحليل أكبر 20 عملة رقمية\n"
-        "   ⏰ 7 إطارات زمنية مختلفة\n"
-        "   📈 مؤشرات فنية متقدمة\n\n"
-        "📊 **أدوات التحليل:** 🛠️\n"
-        "   🌟 نسب فيبوناتشي\n"
-        "   🔴 الدعوم والمقاومات\n"
-        "   📉 القنوات السعرية\n"
-        "   🏛️ النماذج الكلاسيكية\n"
-        "   🎯 مناطق العرض والطلب\n\n"
-        "🎯 **التوصيات الذكية:** 🧠\n"
-        "   ✅ نقاط الدخول المثالية\n"
-        "   🛑 مستويات وقف الخسارة\n"
-        "   💵 أهداف الربح المحسوبة\n"
-        "   ⚖️ إدارة المخاطر\n\n"
-        "═══════════════════════════════════════\n\n"
-        "🚀 **البوت جاهز للاستخدام** 🤖\n"
+        "💎 THE BEST BOT 💎\n"
+        "🎯 نظام التحليل الفني المتقدم 🎯\n\n"
+        f"🕐 التوقيت: {current_time}\n"
+        f"📶 حالة النظام: {status}\n"
+        f"🌐 المنصة: 🏛️ {platform} Exchange\n\n"
+        "📋 الخدمات المتوفرة:\n\n"
+        "🔍 التحليل الفني الشامل ⚡️\n"
+        "💰 تحليل أكبر 20 عملة رقمية\n"
+        "⏰ 7 إطارات زمنية مختلفة\n"
+        "📈 مؤشرات فنية متقدمة\n\n"
+        "📊 أدوات التحليل: 🛠️\n"
+        "🌟 نسب فيبوناتشي\n"
+        "🔴 الدعوم والمقاومات\n"
+        "📉 القنوات السعرية\n"
+        "🏛️ النماذج الكلاسيكية\n"
+        "🎯 مناطق العرض والطلب\n\n"
+        "🎯 التوصيات الذكية: 🧠\n"
+        "✅ نقاط الدخول المثالية\n"
+        "🛑 مستويات وقف الخسارة\n"
+        "💵 أهداف الربح المحسوبة\n"
+        "⚖️ إدارة المخاطر\n\n"
+        "🚀 البوت جاهز للاستخدام 🤖\n"
         "📱 استخدم الأزرار أدناه للتفاعل مع النظام 👇\n\n"
-        "💡 **نصيحة:** 📝 للحصول على أفضل النتائج،\n"
+        "💡 نصيحة: 📝 للحصول على أفضل النتائج،\n"
         "راجع التحليلات بانتظام وتابع تطورات السوق 📊\n\n"
-        "╔═══════════════════════════════════════╗\n"
-        "║  🔥 مرحباً بك في أقوى نظام تحليل فني 🔥  ║\n"
-        "╚═══════════════════════════════════════╝"
+        "🔥 مرحباً بك في أقوى نظام تحليل فني 🔥"
     )
     return text
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler for the /start command."""
     await update.message.reply_text(
-        text=get_start_message_text(),
+        text=get_welcome_message(),
         reply_markup=get_main_keyboard(),
-        parse_mode='HTML' # Using HTML for the bolding and other formatting
+        parse_mode='HTML'
     )
+
+def get_analysis_type_keyboard(symbol: str) -> InlineKeyboardMarkup:
+    """Creates the keyboard for selecting the analysis type."""
+    keyboard = [
+        [
+            InlineKeyboardButton("- صفقة طويلة المدى -", callback_data=f"long_{symbol}"),
+        ],
+        [
+            InlineKeyboardButton("- متوسطة المدى -", callback_data=f"medium_{symbol}"),
+        ],
+        [
+            InlineKeyboardButton("- مضاربة سريعة -", callback_data=f"short_{symbol}"),
+        ],
+        [
+            InlineKeyboardButton("🔙 رجوع لقائمة العملات", callback_data="analyze_menu"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler for all button presses."""
@@ -101,15 +112,15 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     callback_data = query.data
 
     if callback_data == "start_menu":
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "start_bot":
         bot_state["is_active"] = True
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "stop_bot":
         bot_state["is_active"] = False
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "analyze_menu":
         if not bot_state["is_active"]:
@@ -119,7 +130,28 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif callback_data.startswith("coin_"):
         symbol = callback_data.split("_", 1)[1]
-        await query.edit_message_text(text=f"جاري تحليل {symbol}، قد يستغرق هذا بعض الوقت...")
+        await query.edit_message_text(
+            text=f"اختر نوع التحليل للعملة {symbol}:",
+            reply_markup=get_analysis_type_keyboard(symbol)
+        )
+
+    elif callback_data.startswith(("long_", "medium_", "short_")):
+        parts = callback_data.split("_", 1)
+        analysis_type = parts[0]
+        symbol = parts[1]
+
+        timeframe_map = {
+            "long": ['1d', '4h', '1h'],
+            "medium": ['30m', '15m'],
+            "short": ['5m', '3m', '1m']
+        }
+        timeframes_to_analyze = timeframe_map.get(analysis_type)
+
+        if not timeframes_to_analyze:
+            await query.message.reply_text("نوع تحليل غير صالح.")
+            return
+
+        await query.edit_message_text(text=f"جاري تحليل {symbol} لـ {analysis_type}، قد يستغرق هذا بعض الوقت...")
 
         try:
             config = get_config()
@@ -127,11 +159,18 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             if not okx_fetcher:
                 raise ValueError("OKX Fetcher not found in bot context.")
 
-            final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher)
+            final_report = get_ranked_analysis_for_symbol(
+                symbol=symbol,
+                config=config,
+                okx_fetcher=okx_fetcher,
+                timeframes_to_analyze=timeframes_to_analyze
+            )
             send_telegram_message(final_report)
-            await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
+            await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
         except Exception as e:
-            logger.error(f"Error during analysis for {symbol}: {e}")
+            logger.error(f"Error during {analysis_type} analysis for {symbol}: {e}")
             await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
 
 def main() -> None:
