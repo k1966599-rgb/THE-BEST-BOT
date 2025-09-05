@@ -66,9 +66,22 @@ def get_ranked_analysis_for_symbol(symbol: str, config: dict, okx_fetcher: OKXDa
     with concurrent.futures.ThreadPoolExecutor(max_workers=len(timeframes)) as executor:
         future_to_tf = {executor.submit(run_analysis_for_timeframe, symbol, tf, config, okx_fetcher): tf for tf in timeframes}
         for future in concurrent.futures.as_completed(future_to_tf):
-            all_timeframe_results.append(future.result())
+            tf = future_to_tf[future]
+            try:
+                result = future.result()
+                all_timeframe_results.append(result)
+            except Exception as exc:
+                print(f'❌ Timeframe {tf} for {symbol} generated an exception: {exc}')
+                # Optionally, append a failure result to still show it in the report
+                all_timeframe_results.append({'success': False, 'timeframe': tf, 'error': str(exc)})
 
-    ranked_results = rank_opportunities(all_timeframe_results)
+    # Filter out only successful results for ranking, but we could also rank failures low
+    successful_results = [r for r in all_timeframe_results if r.get('success')]
+    if not successful_results:
+         # If all timeframes failed, return an error report
+         return f"❌ تعذر تحليل {symbol} لجميع الأطر الزمنية المطلوبة."
+
+    ranked_results = rank_opportunities(successful_results)
 
     final_report = generate_final_report_text(
         symbol=symbol,
