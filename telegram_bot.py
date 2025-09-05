@@ -9,8 +9,11 @@ from config import get_config, WATCHLIST
 # Note: The interactive part of the bot that calls get_ranked_analysis_for_symbol
 # will need a larger refactor to get access to the okx_fetcher instance.
 # This is a known limitation for now.
+import time
+import threading
 from run_bot import get_ranked_analysis_for_symbol
 from telegram_sender import send_telegram_message
+from okx_data import OKXDataFetcher
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -110,25 +113,24 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif callback_data.startswith("coin_"):
         symbol = callback_data.split("_", 1)[1]
-        # The user requested to remove pre-analysis and post-analysis messages.
-        # The "Analyzing..." message is removed.
-        # await query.edit_message_text(text=f"جاري تحليل {symbol}، قد يستغرق هذا بعض الوقت...")
+
+        await query.edit_message_text(text=f"جاري تحليل {symbol}، قد يستغرق هذا بعض الوقت...")
 
         try:
-            # We must answer the callback query to stop the loading icon on the user's client.
-            await query.answer()
-
             config = get_config()
-            # Note: This will not work correctly as get_ranked_analysis_for_symbol now requires
-            # the okx_fetcher instance, which is not available in this scope.
-            # A larger refactor is needed to make the interactive bot fully functional.
-            final_report = get_ranked_analysis_for_symbol(symbol, config, None) # Passing None temporarily
+            # Retrieve the fetcher instance from the bot's context data
+            okx_fetcher = context.bot_data.get('okx_fetcher')
+            if not okx_fetcher:
+                raise ValueError("OKX Fetcher not found in bot context.")
+
+            final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher)
             send_telegram_message(final_report)
-            # The post-analysis message that returned to the main menu is also removed as requested.
-            # await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
+            # After sending the report, show the main menu again for another analysis
+            await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
         except Exception as e:
             logger.error(f"Error during analysis for {symbol}: {e}")
-            # It's good practice to inform the user if an error occurs.
             await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
 
 def main() -> None:
@@ -139,7 +141,25 @@ def main() -> None:
         logger.error("Error: Telegram bot token not found in .env file.")
         return
 
+    # Initialize the data fetcher
+    logger.info("🚀 Initializing OKX Data Fetcher for the interactive bot...")
+    okx_fetcher = OKXDataFetcher()
+
+    # The symbols to track can be taken from the watchlist
+    okx_symbols = list(set([s.replace('/', '-') for s in WATCHLIST]))
+
+    logger.info(f"📡 Starting data collection for {len(okx_symbols)} symbols...")
+    fetcher_thread = threading.Thread(target=okx_fetcher.start_full_data_collection, args=(okx_symbols,), daemon=True)
+    fetcher_thread.start()
+
+    logger.info("⏳ Waiting 5 seconds for initial data from WebSocket...")
+    time.sleep(5)
+
     application = Application.builder().token(token).build()
+
+    # Store the fetcher instance in the application context
+    application.bot_data['okx_fetcher'] = okx_fetcher
+
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CallbackQueryHandler(main_button_callback))
 
