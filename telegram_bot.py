@@ -104,74 +104,88 @@ def get_analysis_type_keyboard(symbol: str) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+# --- Callback Handlers ---
+
+async def handle_start_menu(query: Update.callback_query, context: ContextTypes.DEFAULT_TYPE):
+    await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
+async def handle_bot_status_change(query: Update.callback_query, context: ContextTypes.DEFAULT_TYPE, is_active: bool):
+    bot_state["is_active"] = is_active
+    await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
+async def handle_analyze_menu(query: Update.callback_query, context: ContextTypes.DEFAULT_TYPE):
+    if not bot_state["is_active"]:
+        await query.answer("البوت متوقف حاليًا. يرجى الضغط على 'تشغيل' أولاً.", show_alert=True)
+        return
+    await query.edit_message_text(text="الرجاء اختيار عملة للتحليل:", reply_markup=get_coin_list_keyboard())
+
+async def handle_coin_selection(query: Update.callback_query, context: ContextTypes.DEFAULT_TYPE):
+    symbol = query.data.split("_", 1)[1]
+    await query.edit_message_text(
+        text=f"اختر نوع التحليل للعملة {symbol}:",
+        reply_markup=get_analysis_type_keyboard(symbol)
+    )
+
+async def handle_analysis_request(query: Update.callback_query, context: ContextTypes.DEFAULT_TYPE):
+    parts = query.data.split("_", 1)
+    analysis_type, symbol = parts[0], parts[1]
+
+    config = get_config()
+    timeframe_map = config['trading'].get('TIMEFRAME_GROUPS', {})
+    timeframes_to_analyze = timeframe_map.get(analysis_type)
+
+    if not timeframes_to_analyze:
+        await query.message.reply_text("نوع تحليل غير صالح.")
+        return
+
+    await query.edit_message_text(text=f"جاري تحليل {symbol} لـ {analysis_type}، قد يستغرق هذا بعض الوقت...")
+
+    try:
+        okx_fetcher = context.bot_data.get('okx_fetcher')
+        if not okx_fetcher:
+            raise ValueError("OKX Fetcher not found in bot context.")
+
+        final_report = get_ranked_analysis_for_symbol(
+            symbol=symbol,
+            config=config,
+            okx_fetcher=okx_fetcher,
+            timeframes_to_analyze=timeframes_to_analyze
+        )
+        send_telegram_message(final_report)
+        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
+    except Exception as e:
+        logger.error(f"Error during {analysis_type} analysis for {symbol}: {e}")
+        await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
+
+# --- Main Callback Router ---
+
 async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handler for all button presses."""
+    """Handler for all button presses, routing to the correct sub-handler."""
     query = update.callback_query
     await query.answer()
 
     callback_data = query.data
 
-    if callback_data == "start_menu":
-        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+    # Map prefixes to their handler functions
+    # Order matters: more specific prefixes should come first.
+    handler_map = {
+        "long_": handle_analysis_request,
+        "medium_": handle_analysis_request,
+        "short_": handle_analysis_request,
+        "coin_": handle_coin_selection,
+        "analyze_menu": handle_analyze_menu,
+        "start_menu": handle_start_menu,
+        "start_bot": lambda q, c: handle_bot_status_change(q, c, is_active=True),
+        "stop_bot": lambda q, c: handle_bot_status_change(q, c, is_active=False),
+    }
 
-    elif callback_data == "start_bot":
-        bot_state["is_active"] = True
-        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
-
-    elif callback_data == "stop_bot":
-        bot_state["is_active"] = False
-        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
-
-    elif callback_data == "analyze_menu":
-        if not bot_state["is_active"]:
-            await query.message.reply_text("البوت متوقف حاليًا. يرجى الضغط على 'تشغيل' أولاً.")
-            return
-        await query.edit_message_text(text="الرجاء اختيار عملة للتحليل:", reply_markup=get_coin_list_keyboard())
-
-    elif callback_data.startswith("coin_"):
-        symbol = callback_data.split("_", 1)[1]
-        await query.edit_message_text(
-            text=f"اختر نوع التحليل للعملة {symbol}:",
-            reply_markup=get_analysis_type_keyboard(symbol)
-        )
-
-    elif callback_data.startswith(("long_", "medium_", "short_")):
-        parts = callback_data.split("_", 1)
-        analysis_type = parts[0]
-        symbol = parts[1]
-
-        timeframe_map = {
-            "long": ['1d', '4h', '1h'],
-            "medium": ['30m', '15m'],
-            "short": ['5m', '3m', '1m']
-        }
-        timeframes_to_analyze = timeframe_map.get(analysis_type)
-
-        if not timeframes_to_analyze:
-            await query.message.reply_text("نوع تحليل غير صالح.")
+    for prefix, handler in handler_map.items():
+        if callback_data.startswith(prefix):
+            await handler(query, context)
             return
 
-        await query.edit_message_text(text=f"جاري تحليل {symbol} لـ {analysis_type}، قد يستغرق هذا بعض الوقت...")
-
-        try:
-            config = get_config()
-            okx_fetcher = context.bot_data.get('okx_fetcher')
-            if not okx_fetcher:
-                raise ValueError("OKX Fetcher not found in bot context.")
-
-            final_report = get_ranked_analysis_for_symbol(
-                symbol=symbol,
-                config=config,
-                okx_fetcher=okx_fetcher,
-                timeframes_to_analyze=timeframes_to_analyze
-            )
-            send_telegram_message(final_report)
-
-            await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
-
-        except Exception as e:
-            logger.error(f"Error during {analysis_type} analysis for {symbol}: {e}")
-            await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
+    logger.warning(f"No handler found for callback data: {callback_data}")
 
 def main() -> None:
     """Main function to run the bot."""
