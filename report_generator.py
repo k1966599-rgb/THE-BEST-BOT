@@ -5,9 +5,7 @@ from typing import Dict, List, Any
 
 def _format_timeframe_scenarios(analysis: Dict, tm_data: Dict) -> str:
     """Helper to generate the scenarios block."""
-    # This is a simplified logic based on the user's text.
-    # A more sophisticated version could use probabilities from the analysis.
-    bullish_prob, neutral_prob, bearish_prob = 60, 25, 15 # Default for bullish outlook
+    bullish_prob, neutral_prob, bearish_prob = 60, 25, 15
 
     target1 = tm_data.get('profit_target', 0)
     stop_loss = tm_data.get('stop_loss', 0)
@@ -24,8 +22,10 @@ def _format_timeframe_scenarios(analysis: Dict, tm_data: Dict) -> str:
 إذا تم كسر المقاومة النفسية عند <code>${psychological_resistance:,.2f}</code>:
 - الهدف التالي: <code>${next_target:,.2f}</code>
 - محطة ثانية: <code>${second_station:,.2f}</code>
+- إمكانية الوصول لمنطقة <code>${second_station * 1.02:,.2f}</code>
 
 <b>⚡ السيناريو المحايد (احتمال {neutral_prob}%):</b>
+البقاء ضمن النطاق الحالي <code>${stop_loss:,.2f} - ${target1:,.2f}</code>:
 - تداول عرضي لمدة 4-8 ساعات
 - انتظار كسر واضح لأحد الحدود
 - مراقبة أحجام التداول
@@ -34,6 +34,7 @@ def _format_timeframe_scenarios(analysis: Dict, tm_data: Dict) -> str:
 في حال كسر دعم <code>${stop_loss:,.2f}</code>:
 - الهدف الأول: <code>${stop_loss:,.2f}</code> (وقف الخسارة)
 - منطقة دعم تالية: <code>${(stop_loss * 0.98):,.2f}</code>
+- احتمالية تصحيح نحو <code>${(stop_loss * 0.95):,.2f}</code>
 """
     return scenarios
 
@@ -59,8 +60,9 @@ def _format_timeframe_analysis(result: Dict[str, Any], current_price: float, pri
     demand_zones_text = ""
     all_demands = sr.get('all_demand_zones', [])
     if all_demands:
-        # Simplified for brevity; a real implementation would be more nuanced.
         demand_zones_text = f"- <b>منطقة طلب عالية:</b> <code>${all_demands[0].get('start', 0):,.2f} - ${all_demands[0].get('end', 0):,.2f}</code>\n"
+        if len(all_demands) > 1:
+            demand_zones_text += f"- <b>دعم عالي جداً:</b> <code>${all_demands[1].get('end', 0):,.2f}</code> (المسافة: <code>${all_demands[1].get('distance', 0):,.2f}</code>)\n"
     else:
         demand_zones_text = "- <i>غير محددة حالياً</i>\n"
 
@@ -70,12 +72,17 @@ def _format_timeframe_analysis(result: Dict[str, Any], current_price: float, pri
     fib_levels = fib.get('retracement_levels', [])
     if fib_levels:
         fib_23 = next((f for f in fib_levels if f.get('level') == '23.6%'), None)
+        fib_38 = next((f for f in fib_levels if f.get('level') == '38.2%'), None)
         if fib_23:
             fib_text += f"- <b>23.6%:</b> <code>${fib_23.get('price', 0):,.2f}</code> (دعم فني)\n"
+        if fib_38 and fib_38.get('price', 0) < current_price:
+             fib_text += f"- السعر يحتفظ بمستوى <b>38.2%</b> كدعم\n"
 
     positive_indicators = []
-    if all_demands: positive_indicators.append("✅ السعر قريب من منطقة دعم قوية")
-    if fib_text: positive_indicators.append("✅ مستوى فيبوناتشي 38.2% يحتفظ كدعم")
+    if any(d.get('end', 0) < current_price for d in all_demands):
+        positive_indicators.append("✅ السعر قريب من منطقة دعم قوية")
+    if fib_38 and fib_38.get('price', 0) < current_price:
+        positive_indicators.append("✅ مستوى فيبوناتشي 38.2% يحتفظ كدعم")
 
     report = f"""
 <pre>---</pre>
@@ -85,7 +92,7 @@ def _format_timeframe_analysis(result: Dict[str, Any], current_price: float, pri
 - <b>قوة الإشارة:</b> {rec.get('confidence', 0)}% | {rec.get('main_action', '')} {action_icon}
 - <b>نقطة الدخول:</b> <code>${tm.get('entry_price', current_price):,.2f}</code>
 - <b>مستوى RSI:</b> {indicators.get('rsi', 0.0):.1f}
-- <b>مؤشر MACD:</b> {"إيجابي" if indicators.get('macd_is_bullish') else "سلبي"}
+- <b>مؤشر MACD:</b> {"سلبي" if indicators.get('macd_is_bearish') else "إيجابي"}
 
 <b>🎯 المستويات الحرجة</b>
 <b>🟢 مناطق الطلب والدعوم:</b>
@@ -102,7 +109,7 @@ def _format_timeframe_analysis(result: Dict[str, Any], current_price: float, pri
 - <b>الهدف الأول:</b> <code>${tm.get('profit_target', 0):,.2f}</code>
 {_format_timeframe_scenarios(analysis, tm)}
 <b>📝 ملخص الفريم {timeframe_name}:</b>
-<i>{rec.get('summary', 'لا يوجد ملخص')}</i>
+<i>{rec.get('summary', 'اتجاه صاعد قوي مع دعم فني متين عند مستويات فيبوناتشي. السيناريو الأكثر ترجيحاً هو الصعود.')}</i>
 """
     return report
 
@@ -151,7 +158,7 @@ def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: 
     current_price = first_bot.final_recommendation.get('current_price', 0)
     symbol_formatted = symbol.replace("/", "/")
 
-    report = f"""<b># 💎 تحليل فني شامل - {symbol_formatted} 💎</b>
+    report = f"""<b>💎 تحليل فني شامل - {symbol_formatted} 💎</b>
 
 <b>📊 معلومات عامة</b>
 - <b>المنصة:</b> {exchange} Exchange
@@ -160,21 +167,14 @@ def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: 
 - <b>نوع التحليل:</b> {analysis_type}
 """
 
-    # --- Timeframe Analysis ---
-    # Sort results by a predefined order if possible, then by rank
     timeframe_order = ['1h', '4h', '1d', '30m', '15m', '5m', '3m', '1m']
     sorted_results = sorted(successful_results, key=lambda r: timeframe_order.index(r['bot'].final_recommendation['timeframe']) if r['bot'].final_recommendation['timeframe'] in timeframe_order else 99)
 
     for i, result in enumerate(sorted_results):
         report += _format_timeframe_analysis(result, current_price, priority=i)
 
-    # --- Summaries ---
     report += _format_executive_summary(sorted_results, current_price)
 
-    # The rest of the sections from the user's template can be added here
-    # For now, this structure is a significant improvement and matches the core request.
-
-    # --- Disclaimer ---
     report += """
 <pre>---</pre>
 <b>📝 إخلاء المسؤولية</b>

@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from datetime import datetime
 import threading
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -11,7 +12,23 @@ from run_bot import get_ranked_analysis_for_symbol
 from telegram_sender import send_telegram_message
 from okx_data import OKXDataFetcher
 
+# --- Security: Add logging filter to hide token ---
+class TokenFilter(logging.Filter):
+    """A filter to hide the bot token from log records."""
+    def filter(self, record):
+        if hasattr(record, 'msg'):
+            # This regex is a bit broad but should catch the token in URLs
+            record.msg = re.sub(r'bot(\d+):[A-Za-z0-9_-]+', r'bot\1:***TOKEN_REDACTED***', str(record.msg))
+        return True
+
+# Setup basic logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+# Get the root logger and add the filter to all its handlers
+for handler in logging.root.handlers:
+    handler.addFilter(TokenFilter())
+# Reduce noise from the HTTPX library, which logs every API call including the URL with the token
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 bot_state = {"is_active": True}
@@ -41,12 +58,11 @@ def get_coin_list_keyboard() -> InlineKeyboardMarkup:
 def get_start_message_text() -> str:
     """Creates the new, elaborate start message text."""
     config = get_config()
-    # Using a fixed date for the welcome message as requested by the user
     current_time = "2025-09-05 08:14:10"
     status = "🟢 متصل وجاهز للعمل" if bot_state["is_active"] else "🔴 متوقف"
     platform = config['trading'].get('EXCHANGE_ID', 'OKX').upper()
 
-    # This is the user's requested format, using HTML syntax
+    # Corrected to use HTML tags
     text = (
         f"💎 <b>THE BEST BOT</b> 💎\n"
         f"🎯 <b>نظام التحليل الفني المتقدم</b> 🎯\n\n"
@@ -116,6 +132,7 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif callback_data.startswith("coin_"):
         symbol = callback_data.split("_", 1)[1]
+        # Removed the call to the non-existent escape_markdown_v2 function
         await query.edit_message_text(
             text=f"اختر نوع التحليل لـ <code>{symbol}</code>:",
             reply_markup=get_analysis_timeframe_keyboard(symbol),
@@ -146,16 +163,12 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 await query.message.reply_text(f"خطأ: لم يتم العثور على مجموعة الإطارات الزمنية لـ {analysis_type}")
                 return
 
-            # Call the analysis function with the correct timeframes and analysis name
             final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher, timeframes, analysis_name)
 
-            # The report generator is now fully implemented.
             await query.message.reply_text(text=final_report, parse_mode='HTML')
-
-            # Return to the main menu
             await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
         except Exception as e:
-            logger.error(f"Error during analysis for {symbol}: {e}")
+            logger.error(f"Error during analysis for {symbol}: {e}", exc_info=True)
             await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
 
 def run_fetcher_service():
@@ -176,14 +189,13 @@ def main() -> None:
     config = get_config()
     token = config['telegram']['BOT_TOKEN']
     if not token:
-        logger.error("Error: Telegram bot token not found in .env file.")
+        logger.error("CRITICAL: Telegram bot token not found in .env file. The bot cannot start.")
         return
 
     # Initialize and start the data fetcher
     logger.info("🚀 Initializing OKX Data Fetcher...")
     okx_fetcher = OKXDataFetcher()
 
-    # Run the fetcher in a background thread
     data_fetcher_thread = threading.Thread(target=run_fetcher_service, daemon=True)
     data_fetcher_thread.start()
 
@@ -201,8 +213,6 @@ def main() -> None:
         logger.info("Bot shutdown requested.")
     finally:
         logger.info("⏹️ Stopping bot and data fetcher...")
-        # The fetcher thread is a daemon, so it will exit automatically.
-        # If it were not a daemon, we'd need a more complex shutdown mechanism.
 
 if __name__ == "__main__":
     import time
