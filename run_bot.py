@@ -26,7 +26,7 @@ def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict, okx_fe
         print(f"--- ⏳ Analyzing {symbol} on {timeframe} ---")
         timeframe_config = copy.deepcopy(config)
         timeframe_config['trading']['INTERVAL'] = timeframe
-
+        
         bot = ComprehensiveTradingBot(symbol=symbol, config=timeframe_config, okx_fetcher=okx_fetcher)
         bot.run_complete_analysis()
         bot.final_recommendation['timeframe'] = timeframe
