@@ -5,6 +5,7 @@ from datetime import datetime
 import time
 import copy
 import traceback
+import concurrent.futures
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -71,15 +72,21 @@ def get_top_20_symbols(okx_fetcher: OKXDataFetcher) -> List[str]:
 
 def get_ranked_analysis_for_symbol(symbol: str, config: dict, okx_fetcher: OKXDataFetcher) -> str:
     """
-    Performs multi-timeframe analysis and returns a single, formatted report string.
+    Performs multi-timeframe analysis in parallel and returns a single, formatted report string.
     """
     timeframes = config['trading'].get('TIMEFRAMES_TO_ANALYZE', ['1d'])
-    print(f"📊 تحليل {symbol} على {len(timeframes)} فريمات زمنية...")
+    print(f"📊 Starting PARALLEL analysis for {symbol} on {len(timeframes)} timeframes...")
+
     all_timeframe_results = []
-    for timeframe in timeframes:
-        result = run_analysis_for_timeframe(symbol, timeframe, config, okx_fetcher)
-        all_timeframe_results.append(result)
-        if len(timeframes) > 1: time.sleep(1)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Use executor.map to run analyses in parallel.
+        # The lambda function provides the fixed arguments (symbol, config, fetcher)
+        # to the analysis function for each timeframe in the list.
+        results_iterator = executor.map(
+            lambda tf: run_analysis_for_timeframe(symbol, tf, config, okx_fetcher),
+            timeframes
+        )
+        all_timeframe_results = list(results_iterator)
 
     ranked_results = rank_opportunities(all_timeframe_results)
 

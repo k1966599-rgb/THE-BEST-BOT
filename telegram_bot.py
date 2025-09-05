@@ -152,8 +152,8 @@ def main() -> None:
     fetcher_thread = threading.Thread(target=okx_fetcher.start_full_data_collection, args=(okx_symbols,), daemon=True)
     fetcher_thread.start()
 
-    logger.info("⏳ Waiting 5 seconds for initial data from WebSocket...")
-    time.sleep(5)
+    logger.info("⏳ Waiting 2 seconds for initial data from WebSocket...")
+    time.sleep(2)
 
     application = Application.builder().token(token).build()
 
