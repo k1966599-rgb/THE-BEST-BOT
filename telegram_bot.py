@@ -28,66 +28,60 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
+def get_welcome_message() -> str:
+    """Creates the new welcome message text based on the user's template."""
+    config = get_config()
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    status = "🟢 متصل وجاهز للعمل" if bot_state["is_active"] else "🔴 متوقف"
+    platform = config['trading'].get('EXCHANGE_ID', 'N/A').upper()
+
+    text = (
+        "💎 THE BEST BOT 💎\n"
+        "🎯 نظام التحليل الفني المتقدم 🎯\n\n"
+        f"🕐 التوقيت: {current_time}\n"
+        f"📶 حالة النظام: {status}\n"
+        f"🌐 المنصة: 🏛️ {platform} Exchange\n\n"
+        "📋 الخدمات المتوفرة:\n\n"
+        "🔍 التحليل الفني الشامل ⚡️\n"
+        "💰 تحليل أكبر 20 عملة رقمية\n"
+        "⏰ 7 إطارات زمنية مختلفة\n"
+        "📈 مؤشرات فنية متقدمة\n\n"
+        "📊 أدوات التحليل: 🛠️\n"
+        "🌟 نسب فيبوناتشي\n"
+        "🔴 الدعوم والمقاومات\n"
+        "📉 القنوات السعرية\n"
+        "🏛️ النماذج الكلاسيكية\n"
+        "🎯 مناطق العرض والطلب\n\n"
+        "🎯 التوصيات الذكية: 🧠\n"
+        "✅ نقاط الدخول المثالية\n"
+        "🛑 مستويات وقف الخسارة\n"
+        "💵 أهداف الربح المحسوبة\n"
+        "⚖️ إدارة المخاطر\n\n"
+        "🚀 البوت جاهز للاستخدام 🤖\n"
+        "📱 استخدم الأزرار أدناه للتفاعل مع النظام 👇\n\n"
+        "💡 نصيحة: 📝 للحصول على أفضل النتائج،\n"
+        "راجع التحليلات بانتظام وتابع تطورات السوق 📊\n\n"
+        "🔥 مرحباً بك في أقوى نظام تحليل فني 🔥"
+    )
+    return text
+
 def get_coin_list_keyboard() -> InlineKeyboardMarkup:
     """Creates the keyboard for coin selection."""
     keyboard = [
         [InlineKeyboardButton(coin, callback_data=f"coin_{coin}") for coin in WATCHLIST[i:i+2]]
         for i in range(0, len(WATCHLIST), 2)
     ]
+    # Add the back button to return to the main menu
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="start_menu")])
     return InlineKeyboardMarkup(keyboard)
 
-def get_start_message_text() -> str:
-    """Creates the new, elaborate start message text."""
-    config = get_config()
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    status = "🟢 متصل وجاهز للعمل" if bot_state["is_active"] else "🔴 متوقف"
-    platform = config['trading'].get('EXCHANGE_ID', 'N/A').upper()
-
-    # This is the user's requested format
-    text = (
-        "╔═══════════════════════════════════════╗\n"
-        "║            💎 THE BEST BOT 💎           ║\n"
-        "║         🎯 نظام التحليل الفني المتقدم 🎯         ║\n"
-        "╚═══════════════════════════════════════╝\n\n"
-        f"🕐 **التوقيت:** {current_time}\n"
-        f"📶 **حالة النظام:** {status}\n"
-        f"🌐 **المنصة:** 🏛️ {platform} Exchange\n\n"
-        "═══════════════════════════════════════\n\n"
-        "📋 **الخدمات المتوفرة:**\n\n"
-        "🔍 **التحليل الفني الشامل** ⚡\n"
-        "   💰 تحليل أكبر 20 عملة رقمية\n"
-        "   ⏰ 7 إطارات زمنية مختلفة\n"
-        "   📈 مؤشرات فنية متقدمة\n\n"
-        "📊 **أدوات التحليل:** 🛠️\n"
-        "   🌟 نسب فيبوناتشي\n"
-        "   🔴 الدعوم والمقاومات\n"
-        "   📉 القنوات السعرية\n"
-        "   🏛️ النماذج الكلاسيكية\n"
-        "   🎯 مناطق العرض والطلب\n\n"
-        "🎯 **التوصيات الذكية:** 🧠\n"
-        "   ✅ نقاط الدخول المثالية\n"
-        "   🛑 مستويات وقف الخسارة\n"
-        "   💵 أهداف الربح المحسوبة\n"
-        "   ⚖️ إدارة المخاطر\n\n"
-        "═══════════════════════════════════════\n\n"
-        "🚀 **البوت جاهز للاستخدام** 🤖\n"
-        "📱 استخدم الأزرار أدناه للتفاعل مع النظام 👇\n\n"
-        "💡 **نصيحة:** 📝 للحصول على أفضل النتائج،\n"
-        "راجع التحليلات بانتظام وتابع تطورات السوق 📊\n\n"
-        "╔═══════════════════════════════════════╗\n"
-        "║  🔥 مرحباً بك في أقوى نظام تحليل فني 🔥  ║\n"
-        "╚═══════════════════════════════════════╝"
-    )
-    return text
-
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler for the /start command."""
-    # Per user request, this handler now directly presents the coin selection menu
-    # instead of the elaborate welcome message.
+    # Display the new welcome message and main menu
     await update.message.reply_text(
-        text="الرجاء اختيار عملة للتحليل:",
-        reply_markup=get_coin_list_keyboard()
+        text=get_welcome_message(),
+        reply_markup=get_main_keyboard(),
+        parse_mode='HTML'
     )
 
 async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -98,15 +92,15 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     callback_data = query.data
 
     if callback_data == "start_menu":
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "start_bot":
         bot_state["is_active"] = True
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "stop_bot":
         bot_state["is_active"] = False
-        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+        await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
     elif callback_data == "analyze_menu":
         if not bot_state["is_active"]:
