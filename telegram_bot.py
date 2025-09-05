@@ -10,7 +10,6 @@ from config import get_config, WATCHLIST
 from run_bot import get_ranked_analysis_for_symbol
 from telegram_sender import send_telegram_message
 from okx_data import OKXDataFetcher
-from report_generator import escape_markdown_v2
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,25 +46,25 @@ def get_start_message_text() -> str:
     status = "🟢 متصل وجاهز للعمل" if bot_state["is_active"] else "🔴 متوقف"
     platform = config['trading'].get('EXCHANGE_ID', 'OKX').upper()
 
-    # This is the user's requested format, using MarkdownV2 syntax
+    # This is the user's requested format, using HTML syntax
     text = (
-        f"💎 *THE BEST BOT* 💎\n"
-        f"🎯 *نظام التحليل الفني المتقدم* 🎯\n\n"
-        f"🕐 *التوقيت:* `{current_time}`\n"
-        f"📶 *حالة النظام:* {status}\n"
-        f"🌐 *المنصة:* 🏛️ {platform} Exchange\n\n"
-        f"*📋 الخدمات المتوفرة:*\n\n"
+        f"💎 <b>THE BEST BOT</b> 💎\n"
+        f"🎯 <b>نظام التحليل الفني المتقدم</b> 🎯\n\n"
+        f"🕐 <b>التوقيت:</b> <code>{current_time}</code>\n"
+        f"📶 <b>حالة النظام:</b> {status}\n"
+        f"🌐 <b>المنصة:</b> 🏛️ {platform} Exchange\n\n"
+        f"<b>📋 الخدمات المتوفرة:</b>\n\n"
         f"🔍 التحليل الفني الشامل ⚡️\n"
         f"💰 تحليل أكبر 20 عملة رقمية\n"
         f"⏰ 7 إطارات زمنية مختلفة\n"
         f"📈 مؤشرات فنية متقدمة\n\n"
-        f"*📊 أدوات التحليل: 🛠️*\n"
+        f"<b>📊 أدوات التحليل: 🛠️</b>\n"
         f"🌟 نسب فيبوناتشي\n"
         f"🔴 الدعوم والمقاومات\n"
         f"📉 القنوات السعرية\n"
         f"🏛️ النماذج الكلاسيكية\n"
         f"🎯 مناطق العرض والطلب\n\n"
-        f"*🎯 التوصيات الذكية: 🧠*\n"
+        f"<b>🎯 التوصيات الذكية: 🧠</b>\n"
         f"✅ نقاط الدخول المثالية\n"
         f"🛑 مستويات وقف الخسارة\n"
         f"💵 أهداف الربح المحسوبة\n"
