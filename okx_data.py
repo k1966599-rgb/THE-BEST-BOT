@@ -137,9 +137,17 @@ class OKXDataFetcher:
         return 1 # Default to 1 minute to avoid division by zero errors
 
     def fetch_historical_data(self, symbol: str = 'BTC-USDT', timeframe: str = '1D', days_to_fetch: int = 365) -> List[Dict]:
-        """Fetches historical data by paginating backwards from the current time."""
+        """
+        Fetches historical data by paginating backwards from the current time.
+        It now checks an in-memory cache first to avoid redundant network requests.
+        """
+        # Check cache first
+        if symbol in self.historical_cache:
+            logger.info(f"✅ Found historical data for {symbol} in cache.")
+            return self.historical_cache[symbol]
+
         try:
-            logger.info(f"📊 Fetching historical data for {symbol} for the last {days_to_fetch} days...")
+            logger.info(f"📊 Fetching historical data for {symbol} for the last {days_to_fetch} days from network...")
 
             all_candles = []
             # For the first request, 'before' is None to get the latest data.
