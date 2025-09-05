@@ -8,7 +8,7 @@ def get_line_equation(p1: tuple, p2: tuple) -> Optional[Dict[str, float]]:
     x1, y1 = p1
     x2, y2 = p2
     if x2 == x1:
-        return None  # Vertical line, undefined slope
+        return None
     slope = (y2 - y1) / (x2 - x1)
     intercept = y1 - slope * x1
     return {'slope': slope, 'intercept': intercept}
@@ -28,7 +28,6 @@ class TrendAnalysis:
         if len(data) < 20:
             return {'uptrend': None, 'downtrend': None}
 
-        # Find significant pivot points
         prominence = data['close'].std() * 0.75
         high_pivots_idx, _ = find_peaks(data['high'], prominence=prominence, distance=5)
         low_pivots_idx, _ = find_peaks(-data['low'], prominence=prominence, distance=5)
@@ -36,14 +35,12 @@ class TrendAnalysis:
         uptrend_line = None
         downtrend_line = None
 
-        # Find uptrend line from last two major lows
         if len(low_pivots_idx) >= 2:
             p1_idx, p2_idx = low_pivots_idx[-2], low_pivots_idx[-1]
             p1 = (p1_idx, data['low'].iloc[p1_idx])
             p2 = (p2_idx, data['low'].iloc[p2_idx])
             uptrend_line = get_line_equation(p1, p2)
 
-        # Find downtrend line from last two major highs
         if len(high_pivots_idx) >= 2:
             p1_idx, p2_idx = high_pivots_idx[-2], high_pivots_idx[-1]
             p1 = (p1_idx, data['high'].iloc[p1_idx])
@@ -56,7 +53,6 @@ class TrendAnalysis:
         if len(self.df) < self.long_period:
             return {'error': f'Not enough data for Trend analysis.', 'total_score': 0}
 
-        # --- Trend Strength using SMAs ---
         current_price = self.df['close'].iloc[-1]
         sma_short = self.df['close'].rolling(window=self.short_period).mean().iloc[-1]
         sma_medium = self.df['close'].rolling(window=self.medium_period).mean().iloc[-1]
@@ -68,10 +64,8 @@ class TrendAnalysis:
         if current_price < sma_short < sma_medium: trend_strength_score -= 2
         if sma_medium < sma_long: trend_strength_score -= 1
 
-        # --- Trend Lines ---
         trend_lines = self.find_trend_lines()
 
-        # Add to score if price is respecting the trend line
         if trend_lines.get('uptrend'):
             slope = trend_lines['uptrend']['slope']
             intercept = trend_lines['uptrend']['intercept']

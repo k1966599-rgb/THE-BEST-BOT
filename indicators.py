@@ -4,14 +4,15 @@ import talib
 from typing import Dict, Any
 
 class TechnicalIndicators:
-    def __init__(self, df: pd.DataFrame):
+    def __init__(self, df: pd.DataFrame, config: dict = None):
         self.df = df.copy()
+        if config is None: config = {}
+        self.config = config
 
     def get_comprehensive_analysis(self) -> Dict[str, Any]:
-        # A single lookback for all indicators. The longest is 200 for SMA.
         required_data_length = 200
         if len(self.df) < required_data_length:
-            return {'error': f'Not enough data for indicators. Need {required_data_length}, got {len(self.df)}.', 'total_score': 0}
+            return {'error': f'Not enough data for indicators.', 'total_score': 0}
 
         # --- Calculations ---
         self.df['SMA_200'] = talib.SMA(self.df['close'], timeperiod=200)
@@ -21,7 +22,7 @@ class TechnicalIndicators:
         self.df['MACD'], self.df['MACD_signal'], _ = talib.MACD(self.df['close'], fastperiod=12, slowperiod=26, signalperiod=9)
         self.df['upper_band'], self.df['middle_band'], self.df['lower_band'] = talib.BBANDS(self.df['close'], timeperiod=20, nbdevup=2, nbdevdn=2, matype=0)
         self.df['slowk'], self.df['slowd'] = talib.STOCH(self.df['high'], self.df['low'], self.df['close'], fastk_period=14, slowk_period=3, slowk_matype=0, slowd_period=3, slowd_matype=0)
-        self.df['ATR'] = talib.ATR(self.df['high'], self.df['low'], self.df['close'], timeperiod=14)
+        self.df['ATR'] = talib.ATR(self.df['high'], self.df['low'], self.df['close'], timeperiod=self.config.get('ATR_PERIOD', 14))
 
         # --- Analysis ---
         current_price = self.df['close'].iloc[-1]
@@ -29,33 +30,29 @@ class TechnicalIndicators:
         sma_50 = self.df['SMA_50'].iloc[-1]
         sma_200 = self.df['SMA_200'].iloc[-1]
 
-        # Trend Score
         trend_strength = 0
         if current_price > sma_20 > sma_50 > sma_200: trend_strength = 4
         elif current_price > sma_20 > sma_50: trend_strength = 2
         elif current_price < sma_20 < sma_50 < sma_200: trend_strength = -4
         elif current_price < sma_20 < sma_50: trend_strength = -2
 
-        # Momentum Score
         rsi = self.df['RSI'].iloc[-1]
         macd = self.df['MACD'].iloc[-1]
         macd_signal = self.df['MACD_signal'].iloc[-1]
         momentum_score = 0
-        if rsi < 30 and macd > macd_signal: momentum_score = 2 # Oversold + Bullish cross
-        elif rsi > 70 and macd < macd_signal: momentum_score = -2 # Overbought + Bearish cross
+        if rsi < 30 and macd > macd_signal: momentum_score = 2
+        elif rsi > 70 and macd < macd_signal: momentum_score = -2
 
-        # Volatility Score (Bollinger Bands)
-        volatility_score = 0
         lower_band = self.df['lower_band'].iloc[-1]
         upper_band = self.df['upper_band'].iloc[-1]
-        if current_price < lower_band: volatility_score = 1 # Price is below lower band (potential bounce)
-        elif current_price > upper_band: volatility_score = -1 # Price is above upper band (potential reversal)
+        volatility_score = 0
+        if current_price < lower_band: volatility_score = 1
+        elif current_price > upper_band: volatility_score = -1
 
-        # Stochastic Score
-        stoch_score = 0
         slowk = self.df['slowk'].iloc[-1]
-        if slowk < 20: stoch_score = 1 # Oversold
-        elif slowk > 80: stoch_score = -1 # Overbought
+        stoch_score = 0
+        if slowk < 20: stoch_score = 1
+        elif slowk > 80: stoch_score = -1
 
         total_score = trend_strength + momentum_score + volatility_score + stoch_score
 

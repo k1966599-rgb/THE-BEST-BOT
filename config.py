@@ -15,7 +15,14 @@ TRADING_CONFIG = {
     'MAX_RISK_PER_TRADE': 0.02,
 
     # الفريمات الزمنية التي سيتم تحليلها بالترتيب
-    'TIMEFRAMES_TO_ANALYZE': ['1d', '4h', '1h', '30m', '15m', '5m', '3m']
+    'TIMEFRAMES_TO_ANALYZE': ['1d', '4h', '1h', '30m', '15m', '5m', '3m'],
+
+    # مجموعات الفريمات الزمنية لأنواع التحليل المختلفة
+    'TIMEFRAME_GROUPS': {
+        "long": ['1d', '4h', '1h'],
+        "medium": ['30m', '15m'],
+        "short": ['5m', '3m', '1m']
+    }
 }
 
 EXCHANGE_CONFIG = {
@@ -44,20 +51,14 @@ ANALYSIS_CONFIG = {
 
     # S/R Analysis
     'SR_LOOKBACK': 100,
-    'SR_TOLERANCE': 0.015, # Percentage for clustering levels into zones
+    'SR_TOLERANCE': 0.015,
 
     # Fibonacci Analysis
     'FIB_LOOKBACK': 90,
 
     # Pattern Analysis
     'PATTERN_LOOKBACK': 90,
-
-    # Old values - can be removed or kept for reference
-    'LOOKBACK_PERIOD': 50,
-    'PIVOT_WINDOW': 5,
-    'MIN_PATTERN_BARS': 10,
-    'LEVEL_TOLERANCE': 0.005,
-    'ATR_MULTIPLIER': 2.0
+    'PATTERN_PRICE_TOLERANCE': 0.03
 }
 
 WATCHLIST = [

@@ -14,7 +14,7 @@ class ClassicPatterns:
         self.lookback_period = config.get('PATTERN_LOOKBACK', 90)
         self.data = self.df.tail(self.lookback_period)
         self.current_price = self.data['close'].iloc[-1] if not self.data.empty else 0
-        self.price_tolerance = 0.03 # 3% tolerance for comparing pivot prices
+        self.price_tolerance = config.get('PATTERN_PRICE_TOLERANCE', 0.03)
 
     def get_pivots(self):
         """Finds significant high and low pivot points."""
@@ -32,9 +32,7 @@ class ClassicPatterns:
         if len(highs) < 2: return patterns
 
         h1, h2 = highs[-2], highs[-1]
-        # Check if two consecutive highs are at a similar price level
         if abs(h1['price'] - h2['price']) / h1['price'] < self.price_tolerance:
-            # Find the intervening low (neckline)
             intervening_lows = [l for l in lows if l['index'] > h1['index'] and l['index'] < h2['index']]
             if intervening_lows:
                 neckline = min(intervening_lows, key=lambda x: x['price'])
@@ -47,7 +45,6 @@ class ClassicPatterns:
         if len(lows) < 2: return patterns
 
         l1, l2 = lows[-2], lows[-1]
-        # Check if two consecutive lows are at a similar price level
         if abs(l1['price'] - l2['price']) / l1['price'] < self.price_tolerance:
             intervening_highs = [h for h in highs if h['index'] > l1['index'] and h['index'] < l2['index']]
             if intervening_highs:
@@ -60,12 +57,9 @@ class ClassicPatterns:
         patterns = []
         if len(highs) < 3 or len(lows) < 2: return patterns
 
-        # Look for Head (h2) higher than Shoulders (h1, h3)
         h1, h2, h3 = highs[-3], highs[-2], highs[-1]
         if h2['price'] > h1['price'] and h2['price'] > h3['price']:
-            # Check if shoulders are at a similar price level
             if abs(h1['price'] - h3['price']) / h1['price'] < (self.price_tolerance * 2):
-                # Find the two intervening lows for the neckline
                 l1 = next((l for l in lows if l['index'] > h1['index'] and l['index'] < h2['index']), None)
                 l2 = next((l for l in lows if l['index'] > h2['index'] and l['index'] < h3['index']), None)
                 if l1 and l2:
@@ -85,7 +79,6 @@ class ClassicPatterns:
         all_patterns.extend(self.check_double_bottom(highs, lows))
         all_patterns.extend(self.check_head_and_shoulders(highs, lows))
 
-        # Sort patterns by most recent (highest index)
         all_patterns.sort(key=lambda x: x.get('index', self.lookback_period), reverse=True)
 
         pattern_score = 0

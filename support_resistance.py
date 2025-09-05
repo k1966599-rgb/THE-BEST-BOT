@@ -47,7 +47,6 @@ class SupportResistanceAnalysis:
         zone_start, zone_end = min(prices), max(prices)
         touches = len(prices)
 
-        # Add a small buffer to single-point zones
         if touches == 1:
             buffer = zone_start * (self.tolerance / 2)
             zone_start -= buffer
@@ -64,7 +63,7 @@ class SupportResistanceAnalysis:
 
     def get_comprehensive_sr_analysis(self) -> Dict:
         if len(self.df) < self.lookback_period:
-            return {'error': f'Not enough data for S/R analysis. Need {self.lookback_period}, got {len(self.df)}.', 'sr_score': 0}
+            return {'error': f'Not enough data for S/R analysis.', 'sr_score': 0}
         levels = self.find_all_levels()
         support_zones = self.cluster_levels_to_zones(levels['supports'])
         resistance_zones = self.cluster_levels_to_zones(levels['resistances'])
@@ -74,14 +73,13 @@ class SupportResistanceAnalysis:
         demand_zones = sorted([z for z in support_zones if z['end'] < current_price], key=lambda x: x['strength_score'], reverse=True)
         supply_zones = sorted([z for z in resistance_zones if z['start'] > current_price], key=lambda x: x['strength_score'], reverse=True)
 
+        for zone in demand_zones:
+            zone['distance'] = current_price - zone['end']
+        for zone in supply_zones:
+            zone['distance'] = zone['start'] - current_price
+
         primary_demand = demand_zones[0] if demand_zones else None
         primary_supply = supply_zones[0] if supply_zones else None
-
-        # Add distance calculation
-        if primary_demand:
-            primary_demand['distance'] = current_price - primary_demand['end']
-        if primary_supply:
-            primary_supply['distance'] = primary_supply['start'] - current_price
 
         sr_score = 0
         if primary_demand: sr_score += primary_demand.get('strength_score', 0) / 2
@@ -90,5 +88,7 @@ class SupportResistanceAnalysis:
         return {
             'primary_demand_zone': primary_demand,
             'primary_supply_zone': primary_supply,
+            'all_demand_zones': demand_zones,
+            'all_supply_zones': supply_zones,
             'sr_score': round(sr_score, 2)
         }

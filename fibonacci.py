@@ -10,7 +10,7 @@ class FibonacciAnalysis:
         self.df = df.copy()
         if config is None: config = {}
         self.lookback_period = config.get('FIB_LOOKBACK', 90)
-        self.data = self.df.tail(lookback_period)
+        self.data = self.df.tail(self.lookback_period)
         self.current_price = self.data['close'].iloc[-1] if not self.data.empty else 0
         self.retracement_ratios = [0.236, 0.382, 0.5, 0.618, 0.786]
         self.extension_ratios = [1.272, 1.618, 2.0, 2.618]
@@ -24,7 +24,7 @@ class FibonacciAnalysis:
         return {'high': {'price': major_high_price, 'time': major_high_time}, 'low': {'price': major_low_price, 'time': major_low_time}}
 
     def get_comprehensive_fibonacci_analysis(self) -> Dict:
-        if len(self.data) < 20: # Need at least some data to find a swing
+        if len(self.data) < 20:
             return {'error': 'Not enough data for Fibonacci analysis.', 'fib_score': 0}
 
         swing = self.find_major_swing()
