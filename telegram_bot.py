@@ -138,7 +138,7 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         analysis_name = analysis_type_map.get(analysis_type, "غير محدد")
 
         await query.edit_message_text(
-            text=f"جاري إعداد *{escape_markdown_v2(analysis_name)}* لـ `{safe_symbol}`\.\.\. قد يستغرق هذا بعض الوقت\.",
+            text=rf"جاري إعداد *{escape_markdown_v2(analysis_name)}* لـ `{safe_symbol}`\.\.\. قد يستغرق هذا بعض الوقت\.",
             parse_mode='MarkdownV2'
         )
 
