@@ -15,7 +15,14 @@ TRADING_CONFIG = {
     'MAX_RISK_PER_TRADE': 0.02,
 
     # الفريمات الزمنية التي سيتم تحليلها بالترتيب
-    'TIMEFRAMES_TO_ANALYZE': ['1d', '4h', '1h', '30m', '15m', '5m', '3m']
+    'TIMEFRAMES_TO_ANALYZE': ['1d', '4h', '1h', '30m', '15m', '5m', '3m'],
+
+    # مجموعات الفريمات الزمنية لأنواع التحليل المختلفة
+    'TIMEFRAME_GROUPS': {
+        "long": ['1d', '4h', '1h'],
+        "medium": ['30m', '15m'],
+        "short": ['5m', '3m', '1m']
+    }
 }
 
 EXCHANGE_CONFIG = {
