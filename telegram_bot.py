@@ -78,6 +78,24 @@ def get_coin_list_keyboard() -> InlineKeyboardMarkup:
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="start_menu")])
     return InlineKeyboardMarkup(keyboard)
 
+def get_analysis_type_keyboard(symbol: str) -> InlineKeyboardMarkup:
+    """Creates the keyboard for selecting the analysis type."""
+    keyboard = [
+        [
+            InlineKeyboardButton("- صفقة طويلة المدى -", callback_data=f"long_{symbol}"),
+        ],
+        [
+            InlineKeyboardButton("- متوسطة المدى -", callback_data=f"medium_{symbol}"),
+        ],
+        [
+            InlineKeyboardButton("- مضاربة سريعة -", callback_data=f"short_{symbol}"),
+        ],
+        [
+            InlineKeyboardButton("🔙 رجوع لقائمة العملات", callback_data="analyze_menu"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handler for the /start command."""
     # Display the new welcome message and main menu
@@ -113,24 +131,48 @@ async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     elif callback_data.startswith("coin_"):
         symbol = callback_data.split("_", 1)[1]
+        # Now, instead of analyzing, show the analysis type selection keyboard
+        await query.edit_message_text(
+            text=f"اختر نوع التحليل للعملة {symbol}:",
+            reply_markup=get_analysis_type_keyboard(symbol)
+        )
 
-        await query.edit_message_text(text=f"جاري تحليل {symbol}، قد يستغرق هذا بعض الوقت...")
+    elif callback_data.startswith(("long_", "medium_", "short_")):
+        parts = callback_data.split("_", 1)
+        analysis_type = parts[0]
+        symbol = parts[1]
+
+        timeframe_map = {
+            "long": ['1d', '4h', '1h'],
+            "medium": ['30m', '15m'],
+            "short": ['5m', '3m', '1m']
+        }
+        timeframes_to_analyze = timeframe_map.get(analysis_type)
+
+        if not timeframes_to_analyze:
+            await query.message.reply_text("نوع تحليل غير صالح.")
+            return
+
+        await query.edit_message_text(text=f"جاري تحليل {symbol} لـ {analysis_type}، قد يستغرق هذا بعض الوقت...")
 
         try:
             config = get_config()
-            # Retrieve the fetcher instance from the bot's context data
             okx_fetcher = context.bot_data.get('okx_fetcher')
             if not okx_fetcher:
                 raise ValueError("OKX Fetcher not found in bot context.")
 
-            final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher)
+            final_report = get_ranked_analysis_for_symbol(
+                symbol=symbol,
+                config=config,
+                okx_fetcher=okx_fetcher,
+                timeframes_to_analyze=timeframes_to_analyze
+            )
             send_telegram_message(final_report)
 
-            # After sending the report, show the main menu again for another analysis
             await query.edit_message_text(text=get_welcome_message(), reply_markup=get_main_keyboard(), parse_mode='HTML')
 
         except Exception as e:
-            logger.error(f"Error during analysis for {symbol}: {e}")
+            logger.error(f"Error during {analysis_type} analysis for {symbol}: {e}")
             await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
 
 def main() -> None:
@@ -152,8 +194,8 @@ def main() -> None:
     fetcher_thread = threading.Thread(target=okx_fetcher.start_full_data_collection, args=(okx_symbols,), daemon=True)
     fetcher_thread.start()
 
-    logger.info("⏳ Waiting 5 seconds for initial data from WebSocket...")
-    time.sleep(5)
+    logger.info("⏳ Waiting 2 seconds for initial data from WebSocket...")
+    time.sleep(2)
 
     application = Application.builder().token(token).build()
 
