@@ -9,7 +9,6 @@ def get_line_equation_from_points(points: np.ndarray) -> Optional[Dict[str, floa
         return None
     x = points[:, 0]
     y = points[:, 1]
-    # Use numpy's polyfit for linear regression
     slope, intercept = np.polyfit(x, y, 1)
     return {'slope': slope, 'intercept': intercept}
 
@@ -33,7 +32,6 @@ class PriceChannels:
 
         data = self.df.tail(self.lookback)
 
-        # Find significant pivot points
         prominence = data['close'].std() * 0.5
         high_pivots_idx, _ = find_peaks(data['high'], prominence=prominence, distance=3)
         low_pivots_idx, _ = find_peaks(-data['low'], prominence=prominence, distance=3)
@@ -50,13 +48,9 @@ class PriceChannels:
         if not upper_line or not lower_line:
             return {'error': 'Could not calculate channel lines.', 'total_score': 0}
 
-        # Average the slope for a more parallel channel
         avg_slope = (upper_line['slope'] + lower_line['slope']) / 2
-
-        # Recalculate intercepts based on the average slope and the center of the data
         center_intercept = (upper_line['intercept'] + lower_line['intercept']) / 2
 
-        # Calculate the width of the channel at the center
         high_center = upper_line['slope'] * (len(data)/2) + upper_line['intercept']
         low_center = lower_line['slope'] * (len(data)/2) + lower_line['intercept']
         channel_width = high_center - low_center
@@ -64,7 +58,6 @@ class PriceChannels:
         upper_intercept = center_intercept + (channel_width / 2)
         lower_intercept = center_intercept - (channel_width / 2)
 
-        # Determine current channel bounds
         last_x = len(data) - 1
         current_upper = avg_slope * last_x + upper_intercept
         current_lower = avg_slope * last_x + lower_intercept
@@ -75,8 +68,8 @@ class PriceChannels:
 
         score = 0
         current_price = data['close'].iloc[-1]
-        if current_price < current_lower: score = 1 # Potential bounce
-        if current_price > current_upper: score = -1 # Potential reversal
+        if current_price < current_lower: score = 1
+        if current_price > current_upper: score = -1
 
         return {
             'channel_info': f"{channel_type}: ${current_lower:,.2f} - ${current_upper:,.2f}",
