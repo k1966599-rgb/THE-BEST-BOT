@@ -6,15 +6,15 @@ from typing import Dict, List, Any
 def _format_timeframe_scenarios(analysis: Dict, tm_data: Dict) -> str:
     """Helper to generate the scenarios block."""
     bullish_prob, neutral_prob, bearish_prob = 60, 25, 15
-
+    
     target1 = tm_data.get('profit_target', 0)
     stop_loss = tm_data.get('stop_loss', 0)
-
+    
     # A more advanced logic would get these from the analysis results
     psychological_resistance = target1 * 0.99
     next_target = target1 * 1.02
     second_station = target1 * 1.04
-
+    
     scenarios = f"""
 <b>📋 السيناريوهات المحتملة:</b>
 
@@ -49,10 +49,10 @@ def _format_timeframe_analysis(result: Dict[str, Any], current_price: float, pri
     sr = analysis.get('support_resistance', {}) or {}
     fib = analysis.get('fibonacci', {}) or {}
     indicators = analysis.get('indicators', {}) or {}
-
+    
     timeframe_map = {"1d": "يومي", "4h": "4 ساعات", "1h": "1 ساعة", "30m": "30 دقيقة", "15m": "15 دقيقة", "5m": "5 دقائق", "3m": "3 دقائق", "1m": "1 دقيقة"}
     timeframe_name = timeframe_map.get(rec.get('timeframe', 'N/A'), rec.get('timeframe', 'N/A'))
-
+    
     priority_icons = ["🥇", "🥈", "🥉"]
     icon = priority_icons[priority] if priority < len(priority_icons) else "🔹"
     action_icon = "🚀" if "شراء" in rec.get('main_action', '') else "📈"
@@ -77,7 +77,7 @@ def _format_timeframe_analysis(result: Dict[str, Any], current_price: float, pri
             fib_text += f"- <b>23.6%:</b> <code>${fib_23.get('price', 0):,.2f}</code> (دعم فني)\n"
         if fib_38 and fib_38.get('price', 0) < current_price:
              fib_text += f"- السعر يحتفظ بمستوى <b>38.2%</b> كدعم\n"
-
+    
     positive_indicators = []
     if any(d.get('end', 0) < current_price for d in all_demands):
         positive_indicators.append("✅ السعر قريب من منطقة دعم قوية")
@@ -119,7 +119,7 @@ def _format_executive_summary(ranked_results: list, current_price: float) -> str
     if not best_bot: return ""
     rec = best_bot.final_recommendation or {}
     tm = best_bot.analysis_results.get('trade_management', {}) or {}
-
+    
     long_term_target = 0
     for r in ranked_results:
         bot = r.get('bot')
@@ -133,7 +133,7 @@ def _format_executive_summary(ranked_results: list, current_price: float) -> str
 <b>✅ التوصية الرئيسية:</b>
 <b>{rec.get('main_action', '')}</b> 🚀 بقوة {rec.get('confidence', 0)}% (حسب فريم الساعة)
 - <b>الدخول:</b> <code>${tm.get('entry_price', current_price):,.2f}</code>
-- <b>وقف الخسارة:</b> <code>${tm.get('stop_loss', 0):,.2f}</code>
+- <b>وقف الخسارة:</b> <code>${tm.get('stop_loss', 0):,.2f}</code>  
 - <b>الهدف الأول:</b> <code>${tm.get('profit_target', 0):,.2f}</code>
 - <b>الهدف المتوسط:</b> <code>${long_term_target:,.2f}</code>
 """
@@ -157,13 +157,13 @@ def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: 
     exchange = first_bot.config.get('trading', {}).get('EXCHANGE_ID', 'OKX')
     current_price = first_bot.final_recommendation.get('current_price', 0)
     symbol_formatted = symbol.replace("/", "/")
-
+    
     report = f"""<b>💎 تحليل فني شامل - {symbol_formatted} 💎</b>
 
 <b>📊 معلومات عامة</b>
-- <b>المنصة:</b> {exchange} Exchange
-- <b>التاريخ والوقت:</b> {datetime.now().strftime("%Y-%m-%d | %H:%M:%S")}
-- <b>السعر الحالي:</b> <code>${current_price:,.2f}</code>
+- <b>المنصة:</b> {exchange} Exchange  
+- <b>التاريخ والوقت:</b> {datetime.now().strftime("%Y-%m-%d | %H:%M:%S")}  
+- <b>السعر الحالي:</b> <code>${current_price:,.2f}</code>  
 - <b>نوع التحليل:</b> {analysis_type}
 """
 
@@ -174,7 +174,7 @@ def generate_final_report_text(symbol: str, analysis_type: str, ranked_results: 
         report += _format_timeframe_analysis(result, current_price, priority=i)
 
     report += _format_executive_summary(sorted_results, current_price)
-
+    
     report += """
 <pre>---</pre>
 <b>📝 إخلاء المسؤولية</b>
