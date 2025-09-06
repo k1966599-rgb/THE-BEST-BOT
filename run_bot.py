@@ -32,11 +32,12 @@ def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict, okx_fe
         bot.final_recommendation['timeframe'] = timeframe
         return {'success': True, 'bot': bot}
     except Exception as e:
-        print(f"❌ Exception during analysis of {symbol} on {timeframe}:")
+        error_message = f"❌ Exception during analysis of {symbol} on {timeframe}. Error: {type(e).__name__}: {str(e)}"
+        print(error_message)
         # We don't print the full traceback for validation errors as they are expected.
         if not isinstance(e, ValueError):
             traceback.print_exc()
-        return {'success': False, 'timeframe': timeframe, 'error': str(e)}
+        return {'success': False, 'timeframe': timeframe, 'error': error_message}
 
 def rank_opportunities(results: list) -> list:
     """Ranks analysis results from different timeframes."""
