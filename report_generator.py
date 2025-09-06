@@ -4,17 +4,9 @@ from typing import Dict, List, Any
 def _format_scenarios(p: Dict, trend_analysis: Dict) -> str:
     if not p: return ""
     name = p.get('name', '')
-
-    # The confidence score is now fully dynamic from classic_patterns.py
     primary_prob = p.get('confidence', 60)
-
-    # Set a smaller, fixed neutral probability
-    neutral_prob = 10
-
-    # Counter probability is the remainder
+    neutral_prob = 15
     counter_prob = 100 - primary_prob - neutral_prob
-
-    # Ensure counter_prob is not negative if confidence is very high
     if counter_prob < 0:
         counter_prob = 5
         neutral_prob = 100 - primary_prob - counter_prob
@@ -23,16 +15,34 @@ def _format_scenarios(p: Dict, trend_analysis: Dict) -> str:
     sup_line = p.get('support_line', p.get('neckline', 0))
     if sup_line == 0: sup_line = p.get('support_line_start', 0)
     target = p.get('calculated_target', 0)
+    secondary_target = target * 1.02 # 2% higher
+    stop_loss_level = sup_line * 0.99 # 1% below support
 
-    text = "\n<b>📋 السيناريوهات المحتملة:</b>\n"
-    if "مثلث صاعد" in name or "علم صاعد" in name or "قاع مزدوج" in name: # Bullish Scenarios
-        text += f"🚀 <b>السيناريو الصاعد (احتمال {primary_prob}%):</b> كسر المقاومة عند <code>${res_line:,.2f}</code> سيؤدي إلى هدف <code>${target:,.2f}</code>.\n"
-        text += f"⚡ <b>السيناريو المحايد (احتمال {neutral_prob}%):</b> التداول العرضي بين الدعم والمقاومة.\n"
-        text += f"📉 <b>السيناريو الهابط (احتمال {counter_prob}%):</b> كسر الدعم عند <code>${sup_line:,.2f}</code> يلغي النموذج الإيجابي.\n"
-    elif "قمة مزدوجة" in name or "رأس وكتفين" in name: # Bearish Scenarios
-        text += f"📉 <b>السيناريو الهابط (احتمال {primary_prob}%):</b> كسر الدعم عند <code>${sup_line:,.2f}</code> سيؤدي إلى هدف <code>${target:,.2f}</code>.\n"
-        text += f"⚡ <b>السيناريو المحايد (احتمال {neutral_prob}%):</b> التداول العرضي بين الدعم والمقاومة.\n"
-        text += f"🚀 <b>السيناريو الصاعد (احتمال {counter_prob}%):</b> اختراق المقاومة عند <code>${res_line:,.2f}</code> يلغي النموذج السلبي.\n"
+    text = "\n<b>📋 السيناريوهات المحتملة:</b>\n\n"
+    # Bullish Scenarios
+    if "مثلث صاعد" in name or "علم صاعد" in name or "قاع مزدوج" in name:
+        text += f"<h4>🚀 السيناريو الصاعد (احتمال {primary_prob}%):</h4>"
+        text += f"كسر مقاومة النموذج عند <code>${res_line:,.2f}</code>:\n"
+        text += f"- الهدف الفوري: <code>${target:,.2f}</code> (هدف النموذج)\n"
+        text += f"- محطة ثانية: <code>${secondary_target:,.2f}</code>\n\n"
+
+        text += f"<h4>⚡️ السيناريو المحايد (احتمال {neutral_prob}%):</h4>"
+        text += "البقاء داخل النموذج:\n- تداول عرضي وانتظار كسر واضح.\n\n"
+
+        text += f"<h4>📉 السيناريو الهابط (احتمال {counter_prob}%):</h4>"
+        text += f"كسر خط الدعم للنموذج:\n- إلغاء النموذج الإيجابي\n- الهدف: <code>${stop_loss_level:,.2f}</code> (وقف الخسارة)\n"
+    # Bearish Scenarios
+    elif "قمة مزدوجة" in name or "رأس وكتفين" in name:
+        text += f"<h4>📉 السيناريو الهابط (احتمال {primary_prob}%):</h4>"
+        text += f"كسر دعم النموذج عند <code>${sup_line:,.2f}</code>:\n"
+        text += f"- الهدف الفوري: <code>${target:,.2f}</code> (هدف النموذج)\n"
+        text += f"- محطة ثانية: <code>${target * 0.98:,.2f}</code>\n\n"
+
+        text += f"<h4>⚡️ السيناريو المحايد (احتمال {neutral_prob}%):</h4>"
+        text += "البقاء داخل النموذج:\n- تداول عرضي وانتظار كسر واضح.\n\n"
+
+        text += f"<h4>🚀 السيناريو الصاعد (احتمال {counter_prob}%):</h4>"
+        text += f"كسر خط المقاومة للنموذج:\n- إلغاء النموذج السلبي\n- الهدف: <code>${res_line * 1.01:,.2f}</code>\n"
     else:
         return ""
     return text
@@ -73,39 +83,65 @@ def _format_sr(analysis: Dict, current_price: float) -> str:
 def _format_timeframe_analysis(result: Dict, priority: int) -> str:
     bot = result.get('bot')
     if not bot: return ""
-    rec, analysis = bot.final_recommendation, bot.analysis_results
-    tm, indicators, patterns_data, trends_data = analysis.get('trade_management', {}), analysis.get('indicators', {}), analysis.get('patterns', {}), analysis.get('trends', {})
-    
+    rec = bot.final_recommendation
+    analysis = bot.analysis_results
+    tm = analysis.get('trade_management', {})
+    indicators = analysis.get('indicators', {})
+    patterns_data = analysis.get('patterns', {})
+    trends_data = analysis.get('trends', {})
+    fib_data = analysis.get('fibonacci', {})
+    sr_data = analysis.get('support_resistance', {})
+    current_price = rec.get('current_price', 0)
+
     timeframe_map = {"1d": "يومي", "4h": "4 ساعات", "1h": "1 ساعة", "30m": "30 دقيقة", "15m": "15 دقيقة", "5m": "5 دقائق", "3m": "3 دقائق", "1m": "دقيقة"}
     timeframe_name = timeframe_map.get(rec.get('timeframe', 'N/A'), rec.get('timeframe', 'N/A'))
     priority_icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣"]
     icon = priority_icons[priority] if priority < len(priority_icons) else "🔹"
-    
+
+    # --- Section 1: Basic Data ---
     main_data = f"""
 ---
 <b>{icon} فريم {timeframe_name} - الأولوية الـ{priority+1}</b>
 <b>📈 المعطيات الأساسية</b>
 - <b>قوة الإشارة:</b> {rec.get('confidence', 0)}% | {rec.get('main_action', '')}
+- <b>نقطة الدخول:</b> <code>${current_price:,.2f}</code>
+- <b>مستوى RSI:</b> {indicators.get('rsi', 0.0):.1f}
+- <b>مؤشر MACD:</b> {'إيجابي' if indicators.get('macd_is_bullish') else 'سلبي'}
 """
-    # Add Divergence Information
-    rsi_div = indicators.get('rsi_divergence')
-    macd_div = indicators.get('macd_divergence')
-    if rsi_div or macd_div:
-        main_data += "<b>⚠️ إشارات انعكاس (Divergence):</b>\n"
-        if rsi_div:
-            main_data += f"- <b>RSI:</b> {rsi_div.get('type', '')}\n"
-        if macd_div:
-            main_data += f"- <b>MACD:</b> {macd_div.get('type', '')}\n"
 
+    # --- Section 2: Patterns ---
     patterns_section = _format_patterns_for_timeframe(patterns_data)
-    sr_section = _format_sr(analysis.get('support_resistance', {}), rec.get('current_price', 0))
 
+    # --- Section 3: Critical Levels (S/R and Fibonacci) ---
+    sr_section = _format_sr(sr_data, current_price)
+
+    fib_section = "<b>🌊 مستويات فيبوناتشي:</b>\n"
+    retracement_levels = fib_data.get('retracement_levels', [])
+    if retracement_levels:
+        for level in retracement_levels:
+            # Highlight the most relevant fib level acting as support/resistance
+            price_diff = abs(level['price'] - current_price) / current_price
+            if price_diff < 0.02: # If price is within 2% of the level
+                fib_section += f"- <b>{level['level']}: <code>${level['price']:,.2f}</code> (مستوى حالي مهم)</b>\n"
+            else:
+                fib_section += f"- {level['level']}: <code>${level['price']:,.2f}</code>\n"
+    else:
+        fib_section += "- <i>لم يتم تحديد مستويات فيبوناتشي.</i>\n"
+
+    critical_levels_section = f"\n<b>🎯 المستويات الحرجة</b>\n{sr_section}{fib_section}"
+
+    # --- Section 4: Positive Indicators ---
+    positive_indicators = indicators.get('positive_indicators', [])
+    indicators_section = f"\n<b>📊 المؤشرات الفنية الإيجابية ({len(positive_indicators)}/12):</b>\n"
+    if positive_indicators:
+        for indicator in positive_indicators[:3]: # Show top 3
+            indicators_section += f"✅ {indicator}\n"
+    else:
+        indicators_section += "<i>لا توجد مؤشرات إيجابية قوية حالياً.</i>\n"
+
+    # --- Section 5: Risk Management ---
     found_patterns = patterns_data.get('found_patterns', [])
-    # Safely get the first pattern, or None if the list is empty
     first_pattern = found_patterns[0] if found_patterns else None
-
-    # Pass trend analysis data to the scenarios function
-    scenarios_section = _format_scenarios(first_pattern, trends_data)
 
     goals_section = "\n<b>🎯 أهداف وإدارة المخاطر:</b>\n"
     stop_loss = tm.get('stop_loss', 0)
@@ -118,14 +154,14 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
         goals_section += f"- <b>{entry_label}:</b> <code>${tm.get('conditional_entry', 0):,.2f}</code>\n"
         goals_section += f"- <b>وقف الخسارة المشروط:</b> <code>${tm.get('conditional_stop_loss', 0):,.2f}</code>\n"
         goals_section += f"- <b>الهدف المشروط:</b> <code>${tm.get('conditional_profit_target', 0):,.2f}</code>\n"
-    else:
-        goals_section += "- <b>وقف الخسارة:</b> <code>$0.00</code>\n"
-        goals_section += "- <b>الهدف الأول:</b> <code>$0.00</code>\n"
 
     if first_pattern and 'الهدف من النموذج' not in goals_section:
         goals_section += f"- <b>الهدف من النموذج:</b> <code>${first_pattern.get('calculated_target', 0):,.2f}</code>"
 
-    return main_data + "\n" + patterns_section + "\n<b>🎯 المستويات الحرجة</b>\n" + sr_section + goals_section + scenarios_section
+    # --- Section 6: Scenarios ---
+    scenarios_section = _format_scenarios(first_pattern, trends_data)
+
+    return main_data + "\n" + patterns_section + critical_levels_section + indicators_section + goals_section + scenarios_section
 
 # ... (rest of the file is unchanged)
 def _analyze_signal_conflict(ranked_results: list) -> str:
@@ -166,41 +202,62 @@ def _analyze_signal_conflict(ranked_results: list) -> str:
 
 def _format_executive_summary(ranked_results: list, current_price: float) -> str:
     if not ranked_results: return ""
+
+    # --- Part 1: Main Recommendation ---
     best_bot = ranked_results[0].get('bot')
-    rec, tm = best_bot.final_recommendation, best_bot.analysis_results.get('trade_management', {})
+    rec = best_bot.final_recommendation
+    tm = best_bot.analysis_results.get('trade_management', {})
     
     summary_text = f"""
 ---
 <b>🏆 الملخص التنفيذي الشامل</b>
 
 <b>✅ التوصية الرئيسية:</b>
-<b>{rec.get('main_action', '')}</b> 🚀 بقوة {rec.get('confidence', 0)}% (حسب أفضل فريم)
-"""
-    # Logic to show conditional or actual trade levels in summary
-    if tm.get('stop_loss', 0) > 0:
-        summary_text += f"""- <b>الدخول:</b> <code>${tm.get('entry_price', current_price):,.2f}</code>
+<b>{rec.get('main_action', '')}</b> بقوة {rec.get('confidence', 0)}% (حسب أفضل فريم: {rec.get('timeframe')})
+- <b>الدخول:</b> <code>${current_price:,.2f}</code>
 - <b>وقف الخسارة:</b> <code>${tm.get('stop_loss', 0):,.2f}</code>  
 - <b>الهدف الأول:</b> <code>${tm.get('profit_target', 0):,.2f}</code>
 """
-    elif tm.get('conditional_stop_loss', 0) > 0:
-        summary_text += f"""- 💡 <b>فكرة مشروطة:</b> {tm.get('trade_idea_name', '')}
-- <b>الدخول عند:</b> <code>${tm.get('conditional_entry', 0):,.2f}</code>
-- <b>وقف الخسارة:</b> <code>${tm.get('conditional_stop_loss', 0):,.2f}</code>
-- <b>الهدف:</b> <code>${tm.get('conditional_profit_target', 0):,.2f}</code>
-"""
-    else:
-        summary_text += f"""- <b>الدخول:</b> <code>${current_price:,.2f}</code>
-- <b>وقف الخسارة:</b> <code>$0.00</code>
-- <b>الهدف الأول:</b> <code>$0.00</code>
-"""
 
-    summary_text += "\n<b>🎯 السياق الفني:</b>\n"
-    summary_text += _analyze_signal_conflict(ranked_results)
+    # --- Part 2: Classic Patterns Analysis ---
+    summary_text += "\n<b>🔍 تحليل النماذج الكلاسيكية:</b>\n"
+    timeframe_map = {"1d": "يومي", "4h": "4 ساعات", "1h": "1 ساعة"}
+    for r in ranked_results:
+        p_data = r['bot'].analysis_results.get('patterns', {})
+        tf = r['bot'].final_recommendation.get('timeframe')
+        if p_data.get('found_patterns'):
+            p = p_data['found_patterns'][0]
+            tf_name = timeframe_map.get(tf, tf)
+            res_line = p.get('resistance_line', p.get('neckline'))
 
-    summary_text += "\n\n<b>🎯 الاستراتيجية الموصى بها:</b>\n"
-    summary_text += """- **للمدى القصير (فريمات دقائق/ساعة):** التركيز على أهداف الفريمات الأصغر ومراقبة نقاط الكسر لتأكيد النماذج.
-- **للمدى الطويل (فريمات 4 ساعات/يومي):** استخدام الفريمات الأصغر لتحديد نقاط دخول دقيقة للنماذج الكبيرة.
-"""
+            summary_text += f"<h4>فريم {tf_name} - {p.get('name', '')}:</h4>"
+            summary_text += f"- قوة النموذج: عالية ({p.get('confidence', 0)}% نجاح)\n"
+            summary_text += f"- الإجراء: مراقبة كسر <code>${res_line:,.2f}</code>\n"
+
+    # --- Part 3: Recommended Strategy ---
+    summary_text += "\n<b>🎯 الاستراتيجية الموصى بها:</b>\n"
+    for r in ranked_results:
+        p_data = r['bot'].analysis_results.get('patterns', {})
+        tf = r['bot'].final_recommendation.get('timeframe')
+        if p_data.get('found_patterns'):
+            p = p_data['found_patterns'][0]
+            tf_name = timeframe_map.get(tf, tf)
+            res_line = p.get('resistance_line', p.get('neckline'))
+            target = p.get('calculated_target', 0)
+
+            if tf in ['1h', '30m', '15m', '5m', '3m', '1m']:
+                summary_text += f"<h4>للمتداولين قصيري المدى ({tf_name}):</h4>"
+                summary_text += f"- النموذج المستهدف: {p.get('name', '')}\n"
+                summary_text += f"- نقطة الدخول: عند كسر <code>${res_line:,.2f}</code>\n"
+                summary_text += f"- الهدف: <code>${target:,.2f}</code>\n"
+
+            if tf in ['4h', '1d']:
+                summary_text += f"<h4>للمستثمرين متوسطي/طويلي المدى ({tf_name}):</h4>"
+                summary_text += f"- النموذج المستهدف: {p.get('name', '')}\n"
+                summary_text += f"- استراتيجية: تجميع عند كسر <code>${res_line:,.2f}</code>\n"
+                summary_text += f"- الهدف النهائي: <code>${target:,.2f}</code>\n"
+
+    # --- Part 4: Critical Monitoring Points ---
     summary_text += "\n<b>🚨 نقاط المراقبة الحرجة للنماذج:</b>\n"
     critical_points_up = ""
     critical_points_down = ""
@@ -211,10 +268,11 @@ def _format_executive_summary(ranked_results: list, current_price: float) -> str
             p = p_data['found_patterns'][0]
             res_line = p.get('resistance_line', p.get('neckline'))
             sup_line = p.get('support_line', p.get('neckline', p.get('support_line_start', 0)))
-            if res_line: critical_points_up += f"- **فريم {tf}:** كسر <code>${res_line:,.2f}</code>\n"
-            if sup_line: critical_points_down += f"- **فريم {tf}:** كسر <code>${sup_line:,.2f}</code>\n"
-    if critical_points_up: summary_text += "📈 **للصعود:**\n" + critical_points_up
-    if critical_points_down: summary_text += "📉 **للهبوط:**\n" + critical_points_down
+            if res_line: critical_points_up += f"- <b>فريم {tf}:</b> كسر <code>${res_line:,.2f}</code> (مقاومة النموذج)\n"
+            if sup_line: critical_points_down += f"- <b>فريم {tf}:</b> كسر <code>${sup_line:,.2f}</code> (دعم النموذج)\n"
+
+    if critical_points_up: summary_text += "<h4>📈 للصعود:</h4>\n" + critical_points_up
+    if critical_points_down: summary_text += "<h4>📉 للهبوط:</h4>\n" + critical_points_down
 
     return summary_text
 
