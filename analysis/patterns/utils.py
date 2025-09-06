@@ -92,3 +92,15 @@ def get_price_pivots(data: pd.DataFrame, prominence_multiplier=0.8, distance=5) 
 
 def get_pivots(data: pd.DataFrame, prominence_multiplier=0.8) -> (List[Dict], List[Dict]):
     return get_price_pivots(data, prominence_multiplier)
+
+def find_trend_line(x_coords: List[int], y_coords: List[float]) -> Dict[str, float]:
+    """
+    Finds the line of best fit for a series of points using linear regression.
+    Returns the slope and intercept of the line.
+    """
+    if not x_coords or not y_coords or len(x_coords) != len(y_coords):
+        return {'slope': 0, 'intercept': 0}
+
+    # Using numpy's polyfit for linear regression (degree 1)
+    slope, intercept = np.polyfit(x_coords, y_coords, 1)
+    return {'slope': slope, 'intercept': intercept}

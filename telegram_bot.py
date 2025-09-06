@@ -35,53 +35,141 @@ bot_state = {"is_active": True}
 okx_fetcher = None # Global fetcher instance
 data_fetcher_thread = None # Global thread for the fetcher
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Handler for the /start command.
-    Now directly triggers a default analysis and sends the report.
-    """
-    symbol = "BTC/USDT"
-    analysis_type = "long"
-    analysis_name = "استثمار طويل المدى (1D - 4H - 1H)"
+def get_main_keyboard() -> InlineKeyboardMarkup:
+    """Creates the main interactive keyboard."""
+    keyboard = [
+        [
+            InlineKeyboardButton("▶️ تشغيل", callback_data="start_bot"),
+            InlineKeyboardButton("⏹️ إيقاف", callback_data="stop_bot"),
+        ],
+        [InlineKeyboardButton("🔍 تحليل", callback_data="analyze_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
+def get_coin_list_keyboard() -> InlineKeyboardMarkup:
+    """Creates the keyboard for coin selection."""
+    keyboard = [
+        [InlineKeyboardButton(coin, callback_data=f"coin_{coin}") for coin in WATCHLIST[i:i+2]]
+        for i in range(0, len(WATCHLIST), 2)
+    ]
+    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="start_menu")])
+    return InlineKeyboardMarkup(keyboard)
+
+def get_start_message_text() -> str:
+    """Creates the new, elaborate start message text."""
+    config = get_config()
+    current_time = "2025-09-05 08:14:10"
+    status = "🟢 متصل وجاهز للعمل" if bot_state["is_active"] else "🔴 متوقف"
+    platform = config['trading'].get('EXCHANGE_ID', 'OKX').upper()
+
+    # Corrected to use HTML tags
+    text = (
+        f"💎 <b>THE BEST BOT</b> 💎\n"
+        f"🎯 <b>نظام التحليل الفني المتقدم</b> 🎯\n\n"
+        f"🕐 <b>التوقيت:</b> <code>{current_time}</code>\n"
+        f"📶 <b>حالة النظام:</b> {status}\n"
+        f"🌐 <b>المنصة:</b> 🏛️ {platform} Exchange\n\n"
+        f"<b>📋 الخدمات المتوفرة:</b>\n\n"
+        f"🔍 التحليل الفني الشامل ⚡️\n"
+        f"💰 تحليل أكبر 20 عملة رقمية\n"
+        f"⏰ 7 إطارات زمنية مختلفة\n"
+        f"📈 مؤشرات فنية متقدمة\n\n"
+        f"<b>📊 أدوات التحليل: 🛠️</b>\n"
+        f"🌟 نسب فيبوناتشي\n"
+        f"🔴 الدعوم والمقاومات\n"
+        f"📉 القنوات السعرية\n"
+        f"🏛️ النماذج الكلاسيكية\n"
+        f"🎯 مناطق العرض والطلب\n\n"
+        f"<b>🎯 التوصيات الذكية: 🧠</b>\n"
+        f"✅ نقاط الدخول المثالية\n"
+        f"🛑 مستويات وقف الخسارة\n"
+        f"💵 أهداف الربح المحسوبة\n"
+        f"⚖️ إدارة المخاطر"
+    )
+    return text
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler for the /start command."""
     await update.message.reply_text(
-        text=f"أهلاً بك في THE BEST BOT! 💎\n\n"
-             f"جاري إعداد <b>{analysis_name}</b> للعملة الافتراضية <code>{symbol}</code>... قد يستغرق هذا بعض الوقت.",
+        text=get_start_message_text(),
+        reply_markup=get_main_keyboard(),
         parse_mode='HTML'
     )
 
-    try:
-        config = get_config()
-        timeframes = config['trading']['TIMEFRAME_GROUPS'].get(analysis_type)
-        if not timeframes:
-            await update.message.reply_text(f"خطأ: لم يتم العثور على مجموعة الإطارات الزمنية لـ {analysis_type}")
+def get_analysis_timeframe_keyboard(symbol: str) -> InlineKeyboardMarkup:
+    """Creates the keyboard for selecting the analysis timeframe."""
+    keyboard = [
+        [InlineKeyboardButton("تحليل طويل المدى (يومي, 4س, 1س)", callback_data=f"analyze_long_{symbol}")],
+        [InlineKeyboardButton("تحليل متوسط المدى (30د, 15د)", callback_data=f"analyze_medium_{symbol}")],
+        [InlineKeyboardButton("تحليل قصير المدى (5د, 3د)", callback_data=f"analyze_short_{symbol}")],
+        [InlineKeyboardButton("🔙 رجوع لقائمة العملات", callback_data="analyze_menu")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+async def main_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handler for all button presses."""
+    query = update.callback_query
+    await query.answer()
+
+    callback_data = query.data
+
+    if callback_data == "start_menu":
+        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
+    elif callback_data == "start_bot":
+        bot_state["is_active"] = True
+        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
+    elif callback_data == "stop_bot":
+        bot_state["is_active"] = False
+        await query.edit_message_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+
+    elif callback_data == "analyze_menu":
+        if not bot_state["is_active"]:
+            await query.message.reply_text("البوت متوقف حاليًا. يرجى الضغط على 'تشغيل' أولاً.")
             return
+        await query.edit_message_text(text="الرجاء اختيار عملة للتحليل:", reply_markup=get_coin_list_keyboard())
 
-        # Running the analysis in a separate thread to avoid blocking the bot
-        def analysis_thread():
-            try:
-                final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher, timeframes, analysis_name)
-                # Split the report into chunks if it's too long
-                for i in range(0, len(final_report), 4096):
-                    context.bot.send_message(
-                        chat_id=update.effective_chat.id,
-                        text=final_report[i:i + 4096],
-                        parse_mode='HTML'
-                    )
-            except Exception as e:
-                logger.error(f"Error in analysis thread for {symbol}: {e}", exc_info=True)
-                context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text=f"حدث خطأ فادح أثناء تحليل {symbol}. يرجى مراجعة السجلات."
-                )
+    elif callback_data.startswith("coin_"):
+        symbol = callback_data.split("_", 1)[1]
+        # Removed the call to the non-existent escape_markdown_v2 function
+        await query.edit_message_text(
+            text=f"اختر نوع التحليل لـ <code>{symbol}</code>:",
+            reply_markup=get_analysis_timeframe_keyboard(symbol),
+            parse_mode='HTML'
+        )
 
-        # Start the thread
-        thread = threading.Thread(target=analysis_thread)
-        thread.start()
+    elif callback_data.startswith("analyze_"):
+        parts = callback_data.split("_")
+        analysis_type = parts[1]
+        symbol = "_".join(parts[2:])
 
-    except Exception as e:
-        logger.error(f"Error initiating analysis for {symbol}: {e}", exc_info=True)
-        await update.message.reply_text(f"حدث خطأ قبل بدء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
+        analysis_type_map = {
+            "long": "استثمار طويل المدى (1D - 4H - 1H)",
+            "medium": "تداول متوسط المدى (30m - 15m)",
+            "short": "مضاربة سريعة (5m - 3m)"
+        }
+        analysis_name = analysis_type_map.get(analysis_type, "غير محدد")
+
+        await query.edit_message_text(
+            text=f"جاري إعداد <b>{analysis_name}</b> لـ <code>{symbol}</code>... قد يستغرق هذا بعض الوقت.",
+            parse_mode='HTML'
+        )
+
+        try:
+            config = get_config()
+            timeframes = config['trading']['TIMEFRAME_GROUPS'].get(analysis_type)
+            if not timeframes:
+                await query.message.reply_text(f"خطأ: لم يتم العثور على مجموعة الإطارات الزمنية لـ {analysis_type}")
+                return
+
+            final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher, timeframes, analysis_name)
+
+            await query.message.reply_text(text=final_report, parse_mode='HTML')
+            await query.message.reply_text(text=get_start_message_text(), reply_markup=get_main_keyboard(), parse_mode='HTML')
+        except Exception as e:
+            logger.error(f"Error during analysis for {symbol}: {e}", exc_info=True)
+            await query.message.reply_text(f"حدث خطأ أثناء تحليل {symbol}. يرجى المحاولة مرة أخرى.")
 
 def run_fetcher_service():
     """Function to run in a separate thread to manage the data fetcher."""
@@ -116,6 +204,7 @@ def main() -> None:
 
     application = Application.builder().token(token).build()
     application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CallbackQueryHandler(main_button_callback))
 
     try:
         logger.info("🤖 Interactive bot is starting...")
