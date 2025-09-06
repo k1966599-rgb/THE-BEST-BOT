@@ -65,7 +65,9 @@ class ComprehensiveTradingBot:
         required_days = (max_lookback_candles / candles_per_day) * 1.1
 
         # Return integer number of days, with a minimum of 30
-        return max(30, int(required_days))
+        calculated_days = max(30, int(required_days))
+        print(f"DEBUG: For timeframe {self.timeframe}, max lookback is {max_lookback_candles} candles, calculated days to fetch: {calculated_days}")
+        return calculated_days
 
     def fetch_data(self) -> bool:
         okx_symbol = self.symbol.replace('/', '-')
