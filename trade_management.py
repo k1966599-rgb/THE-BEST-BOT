@@ -81,34 +81,54 @@ class TradeManagement:
         if 'شراء' in signal:
             levels = self.get_trade_levels(analysis_results)
             position_info = self.calculate_position_size(levels['long_entry'], levels['long_stop_loss'])
-
             risk = abs(levels['long_entry'] - levels['long_stop_loss'])
             reward = abs(levels['long_profit_target'] - levels['long_entry'])
-
             trade_plan.update({
-                'direction': 'Long',
-                'entry_price': levels['long_entry'],
-                'stop_loss': levels['long_stop_loss'],
-                'profit_target': levels['long_profit_target'],
-                'position_sizing': position_info,
-                'risk_reward_ratio': reward / risk if risk > 0 else 0
+                'direction': 'Long', 'entry_price': levels['long_entry'],
+                'stop_loss': levels['long_stop_loss'], 'profit_target': levels['long_profit_target'],
+                'position_sizing': position_info, 'risk_reward_ratio': reward / risk if risk > 0 else 0
             })
         elif 'بيع' in signal:
             levels = self.get_trade_levels(analysis_results)
             position_info = self.calculate_position_size(levels['short_entry'], levels['short_stop_loss'])
-
             risk = abs(levels['short_entry'] - levels['short_stop_loss'])
             reward = abs(levels['short_profit_target'] - levels['short_entry'])
-
             trade_plan.update({
-                'direction': 'Short',
-                'entry_price': levels['short_entry'],
-                'stop_loss': levels['short_stop_loss'],
-                'profit_target': levels['short_profit_target'],
-                'position_sizing': position_info,
-                'risk_reward_ratio': reward / risk if risk > 0 else 0
+                'direction': 'Short', 'entry_price': levels['short_entry'],
+                'stop_loss': levels['short_stop_loss'], 'profit_target': levels['short_profit_target'],
+                'position_sizing': position_info, 'risk_reward_ratio': reward / risk if risk > 0 else 0
             })
-        else:
-            trade_plan['recommendation'] = "لا توجد صفقة حالياً. مراقبة السوق."
+        else: # "انتظار"
+            patterns = analysis_results.get('patterns', {}).get('found_patterns', [])
+            if patterns and 'قيد التكوين' in patterns[0].get('status', ''):
+                p = patterns[0]
+                p_name = p.get('name', '')
+                entry = p.get('resistance_line', p.get('neckline', 0))
+                sl = p.get('support_line', p.get('support_line_start', 0))
+                if sl == 0 and 'قاع مزدوج' in p_name: sl = (p.get('bottom_1_price', 0) + p.get('bottom_2_price', 0)) / 2
+                if sl == 0 and 'قمة مزدوجة' in p_name: sl = p.get('neckline', 0)
+
+                target = p.get('calculated_target', 0)
+
+                is_bullish = 'صاعد' in p_name or 'قاع' in p_name
+
+                if is_bullish and entry > 0 and sl > 0 and target > 0:
+                    trade_plan.update({
+                        'trade_idea_name': f"مراقبة اختراق نمط {p_name}",
+                        'conditional_entry': entry,
+                        'conditional_stop_loss': sl * 0.998, # Slightly below support
+                        'conditional_profit_target': target,
+                    })
+                elif not is_bullish and entry > 0 and sl > 0 and target > 0:
+                     trade_plan.update({
+                        'trade_idea_name': f"مراقبة كسر نمط {p_name}",
+                        'conditional_entry': sl, # Entry on support break
+                        'conditional_stop_loss': entry * 1.002, # Slightly above resistance
+                        'conditional_profit_target': target,
+                    })
+                else:
+                    trade_plan['recommendation'] = "لا توجد صفقة حالياً. مراقبة السوق."
+            else:
+                trade_plan['recommendation'] = "لا توجد صفقة حالياً. مراقبة السوق."
 
         return trade_plan

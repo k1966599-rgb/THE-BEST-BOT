@@ -7,31 +7,57 @@ class ClassicPatterns:
     def __init__(self, df: pd.DataFrame, config: dict = None):
         self.df = df.copy() # Expects a dataframe with indicators already calculated
         if config is None: config = {}
+        self.config = config # Bug fix: assign config to self.config
         self.lookback_period = config.get('PATTERN_LOOKBACK', 90)
         self.data = self.df.tail(self.lookback_period)
         self.current_price = self.data['Close'].iloc[-1] if not self.data.empty else 0
         self.price_tolerance = config.get('PATTERN_PRICE_TOLERANCE', 0.03)
 
-    def _calculate_dynamic_confidence(self, base_confidence: int, breakout_candle_idx: int) -> int:
+    def _calculate_dynamic_confidence(self, base_confidence: int, is_bullish: bool) -> int:
         """
-        Calculates a dynamic confidence score based on volume and trend strength (ADX).
+        Calculates a dynamic confidence score based on volume, trend strength (ADX), and momentum (RSI).
+        The calculation is based on the most recent candle's data.
         """
+        breakout_candle_idx = -1 # Always use the latest candle for real-time analysis
+
+        # Ensure index is valid
         if breakout_candle_idx >= len(self.df) or breakout_candle_idx < 0:
             return base_confidence
 
         confidence = base_confidence
 
         # 1. Volume Confirmation
-        breakout_volume = self.df['Volume'].iloc[breakout_candle_idx]
-        avg_volume = self.df['Volume'].rolling(window=20).mean().iloc[breakout_candle_idx]
-        if breakout_volume > avg_volume * 1.5:
-            confidence += 10 # Strong volume confirmation
+        try:
+            breakout_volume = self.df['Volume'].iloc[breakout_candle_idx]
+            avg_volume = self.df['Volume'].rolling(window=20).mean().iloc[breakout_candle_idx]
+            if breakout_volume > avg_volume * 1.5:
+                confidence += 10 # Strong volume confirmation
+        except (KeyError, IndexError):
+            pass # Ignore if volume data is not available
 
         # 2. ADX Confirmation (Trend Strength)
-        adx_period = self.config.get('ADX_PERIOD', 14)
-        adx_value = self.df[f'ADX_{adx_period}'].iloc[breakout_candle_idx]
-        if adx_value > 25:
-            confidence += 10 # Breakout occurred during a strong trend
+        try:
+            adx_period = self.config.get('ADX_PERIOD', 14)
+            adx_key = f'ADX_{adx_period}'
+            if adx_key in self.df.columns:
+                adx_value = self.df[adx_key].iloc[breakout_candle_idx]
+                if adx_value > 25:
+                    confidence += 10 # Breakout occurred during a strong trend
+        except (KeyError, IndexError):
+            pass # Ignore if ADX data is not available
+
+        # 3. RSI Confirmation (Momentum)
+        try:
+            rsi_period = self.config.get('RSI_PERIOD', 14)
+            rsi_key = f'RSI_{rsi_period}'
+            if rsi_key in self.df.columns:
+                rsi_value = self.df[rsi_key].iloc[breakout_candle_idx]
+                if is_bullish and rsi_value < 75: # Not extremely overbought
+                    confidence += 5
+                elif not is_bullish and rsi_value > 25: # Not extremely oversold
+                    confidence += 5
+        except (KeyError, IndexError):
+            pass # Ignore if RSI data is not available
 
         return min(confidence, 98) # Cap confidence at 98%
 
@@ -57,7 +83,7 @@ class ClassicPatterns:
         if trend_lows[-1]['price'] > resistance_line: return patterns
         height = resistance_line - trend_lows[0]['price']
 
-        confidence = self._calculate_dynamic_confidence(70, highs[-1]['index'])
+        confidence = self._calculate_dynamic_confidence(70, is_bullish=True)
 
         patterns.append({
             'name': 'مثلث صاعد (Ascending Triangle)', 'status': 'قيد التكوين 🟡' if self.current_price < resistance_line else 'مكتمل ✅',
@@ -76,7 +102,7 @@ class ClassicPatterns:
                 neckline_high = max(intervening_highs, key=lambda x: x['price'])
                 neckline_price = neckline_high['price']
                 height = neckline_price - (l1['price'] + l2['price']) / 2
-                confidence = self._calculate_dynamic_confidence(65, neckline_high['index'])
+                confidence = self._calculate_dynamic_confidence(65, is_bullish=True)
                 patterns.append({
                     'name': 'قاع مزدوج (Double Bottom)', 'status': 'مكتمل ✅' if self.current_price > neckline_price else 'قيد التكوين 🟡',
                     'neckline': neckline_price, 'bottom_1_price': l1['price'], 'bottom_2_price': l2['price'],
