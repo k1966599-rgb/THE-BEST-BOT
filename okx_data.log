@@ -33415,3 +33415,16 @@
 2025-09-04 19:12:08,541 - okx_data - INFO - 📈 POLYDOGE-USDT: $0.0000 (+0.00%)
 2025-09-04 19:12:08,557 - okx_data - INFO - 📈 PUMP-USDT: $0.0042 (+0.00%)
 2025-09-04 19:12:08,573 - okx_data - INFO - 📈 DOGS-USDT: $0.0001 (+0.00%)
+2025-09-06 03:34:39,479 - okx_data - INFO - 📁 OKX Data Fetcher initialized - Data Dir: okx_data
+2025-09-06 03:34:39,479 - okx_data - INFO - 🚀 Starting all data services...
+2025-09-06 03:34:39,480 - okx_websocket_client - INFO - ✅ WebSocket client thread started.
+2025-09-06 03:34:39,480 - okx_data - INFO - ✅ WebSocket client started.
+2025-09-06 03:34:39,480 - okx_websocket_client - INFO - 🔗 Attempting to connect to WebSocket...
+2025-09-06 03:34:40,485 - okx_websocket_client - INFO - ✅ WebSocket connected
+2025-09-06 03:34:40,485 - okx_websocket_client - INFO - 📡 Subscribed to 1 symbols
+2025-09-06 03:34:49,481 - okx_data - INFO - 📊 Fetching historical data for BTC-USDT (30m) for 30 days from network...
+2025-09-06 03:34:49,485 - okx_data - INFO - 📊 Fetching historical data for BTC-USDT (15m) for 30 days from network...
+2025-09-06 03:34:52,656 - okx_data - INFO - ✅ Fetched and cached 300 unique candles for BTC-USDT
+2025-09-06 03:34:56,124 - okx_data - INFO - ✅ Fetched and cached 300 unique candles for BTC-USDT
+2025-09-06 03:34:58,689 - okx_data - INFO - ⏹️ Stopping data fetcher...
+2025-09-06 03:34:58,690 - okx_data - INFO - ✅ Stop signal sent.
