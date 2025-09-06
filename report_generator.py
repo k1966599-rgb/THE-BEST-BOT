@@ -91,8 +91,11 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
     sr_section = _format_sr(analysis.get('support_resistance', {}), rec.get('current_price', 0))
 
     found_patterns = patterns_data.get('found_patterns', [])
+    # Safely get the first pattern, or None if the list is empty
+    first_pattern = found_patterns[0] if found_patterns else None
+
     # Pass trend analysis data to the scenarios function
-    scenarios_section = _format_scenarios(found_patterns[0] if found_patterns else None, trends_data)
+    scenarios_section = _format_scenarios(first_pattern, trends_data)
 
     goals_section = "\n<b>🎯 أهداف وإدارة المخاطر:</b>\n"
     stop_loss = tm.get('stop_loss', 0)
@@ -109,8 +112,8 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
         goals_section += "- <b>وقف الخسارة:</b> <code>$0.00</code>\n"
         goals_section += "- <b>الهدف الأول:</b> <code>$0.00</code>\n"
 
-    if found_patterns and 'الهدف من النموذج' not in goals_section:
-        goals_section += f"- <b>الهدف من النموذج:</b> <code>${found_patterns[0].get('calculated_target', 0):,.2f}</code>"
+    if first_pattern and 'الهدف من النموذج' not in goals_section:
+        goals_section += f"- <b>الهدف من النموذج:</b> <code>${first_pattern.get('calculated_target', 0):,.2f}</code>"
 
     return main_data + "\n" + patterns_section + "\n<b>🎯 المستويات الحرجة</b>\n" + sr_section + goals_section + scenarios_section
 
@@ -129,7 +132,14 @@ def _analyze_signal_conflict(ranked_results: list) -> str:
     short_term_bearish = 0
 
     for r in ranked_results:
-        p = r.get('bot', {}).analysis_results.get('patterns', {}).get('found_patterns', [{}])[0]
+        patterns_analysis = r.get('bot', {}).analysis_results.get('patterns', {})
+        found_patterns = patterns_analysis.get('found_patterns')
+
+        # If found_patterns is None or an empty list, skip this timeframe for conflict analysis
+        if not found_patterns:
+            continue
+
+        p = found_patterns[0]
         tf = r.get('bot', {}).final_recommendation.get('timeframe')
         name = p.get('name', '')
         is_bullish = 'صاعد' in name or 'قاع' in name
