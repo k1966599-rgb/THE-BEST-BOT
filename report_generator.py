@@ -164,42 +164,6 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
     return main_data + "\n" + patterns_section + critical_levels_section + indicators_section + goals_section + scenarios_section
 
 # ... (rest of the file is unchanged)
-def _analyze_signal_conflict(ranked_results: list) -> str:
-    """
-    Analyzes conflicts between the main actions ('Buy', 'Sell', 'Wait') of different timeframes.
-    """
-    if len(ranked_results) < 2:
-        return "- لا يوجد سياق كافٍ للمقارنة بين الأطر الزمنية."
-
-    # Define timeframe categories
-    long_term_tfs = ['1d', '4h']
-    short_term_tfs = ['1h', '30m', '15m', '5m', '3m', '1m']
-
-    # Get the main action for the highest-ranked long-term and short-term timeframes
-    long_term_signal = next((r['bot'].final_recommendation.get('main_action', '') for r in ranked_results if r['bot'].final_recommendation.get('timeframe') in long_term_tfs), None)
-    short_term_signal = next((r['bot'].final_recommendation.get('main_action', '') for r in ranked_results if r['bot'].final_recommendation.get('timeframe') in short_term_tfs), None)
-
-    if not long_term_signal or not short_term_signal:
-        return "- ✅ لا يوجد تعارض واضح في الإشارات بين الأطر الزمنية المختلفة."
-
-    # Analyze conflicts
-    is_long_bullish = 'شراء' in long_term_signal
-    is_long_bearish = 'بيع' in long_term_signal
-    is_short_bullish = 'شراء' in short_term_signal
-    is_short_bearish = 'بيع' in short_term_signal
-
-    if is_long_bullish and is_short_bearish:
-        return "- 💡 **سياق مهم:** الاتجاه العام على المدى الطويل صاعد، بينما تظهر الأطر القصيرة إشارات ضعف أو جني أرباح. قد يكون هذا مجرد تراجع مؤقت ومناسبة جيدة للشراء من مستويات أقل."
-    if is_long_bearish and is_short_bullish:
-        return "- 💡 **سياق مهم:** الاتجاه العام على المدى الطويل هابط، بينما تظهر الأطر القصيرة إشارات ارتداد. قد يكون هذا مجرد صعود تصحيحي مؤقت قبل استئناف الهبوط."
-
-    # Check for alignment
-    if (is_long_bullish and is_short_bullish) or (is_long_bearish and is_short_bearish):
-        return "- ✅ **تأكيد:** الإشارات متوافقة على الأطر الزمنية الطويلة والقصيرة، مما يعزز قوة الاتجاه الحالي."
-
-    return "- ❔ **ملاحظة:** الإشارات محايدة أو غير حاسمة على بعض الأطر الزمنية. يتطلب المزيد من المراقبة."
-
-
 def _format_executive_summary(ranked_results: list, current_price: float) -> str:
     if not ranked_results: return ""
 
