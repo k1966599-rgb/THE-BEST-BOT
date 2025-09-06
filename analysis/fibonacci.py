@@ -12,54 +12,74 @@ class FibonacciAnalysis:
         if config is None: config = {}
         self.lookback_period = config.get('FIB_LOOKBACK', 90)
         self.data = self.df.tail(self.lookback_period).reset_index(drop=True)
-        self.current_price = self.data['close'].iloc[-1] if not self.data.empty else 0
+        self.current_price = self.data['Close'].iloc[-1] if not self.data.empty else 0
         self.retracement_ratios = [0.236, 0.382, 0.5, 0.618, 0.786]
         self.extension_ratios = [1.272, 1.618, 2.0, 2.618]
 
     def find_major_swing(self) -> Dict:
         """
-        Finds the most recent significant price swing using pivots.
-        This is more robust than finding the absolute min/max.
+        Finds the most significant and recent price swing using ATR-based pivots.
+        This is more robust and accurate than the previous method.
         """
-        if len(self.data) < 20: return {}
+        if len(self.data) < 20:
+            return {}
 
-        # 1. Find all pivot points
-        prominence = self.data['close'].std() * 0.8
-        if np.isnan(prominence) or prominence == 0: return {}
+        # 1. Use ATR for dynamic prominence calculation
+        atr_column = next((col for col in self.data.columns if 'ATRr' in col), None)
+        if atr_column is None or self.data[atr_column].isnull().all():
+            # Fallback to standard deviation if ATR is not available
+            prominence = self.data['Close'].std() * 0.8
+        else:
+            # Use mean ATR multiplied by a factor as prominence
+            prominence = self.data[atr_column].mean() * 1.0
 
-        high_pivots_idx, _ = find_peaks(self.data['high'], prominence=prominence, distance=5)
-        low_pivots_idx, _ = find_peaks(-self.data['low'], prominence=prominence, distance=5)
+        if np.isnan(prominence) or prominence == 0:
+            return {}
+
+        # 2. Find all pivot points with increased distance to filter out noise
+        distance = 10
+        high_pivots_idx, _ = find_peaks(self.data['High'], prominence=prominence, distance=distance)
+        low_pivots_idx, _ = find_peaks(-self.data['Low'], prominence=prominence, distance=distance)
 
         if high_pivots_idx.size < 1 or low_pivots_idx.size < 1:
-            return {} # Not enough pivots
+            return {}
 
-        # 2. Determine the most recent swing direction
-        last_high_idx = high_pivots_idx[-1]
-        last_low_idx = low_pivots_idx[-1]
+        # 3. Generate all possible swings (low-to-high and high-to-low)
+        swings = []
+        all_pivots = sorted(
+            [(i, 'h') for i in high_pivots_idx] + [(i, 'l') for i in low_pivots_idx],
+            key=lambda x: x[0]
+        )
 
-        if last_high_idx > last_low_idx:
-            # Recent trend is up, swing is from a low to a high
-            swing_high_idx = last_high_idx
-            # Find the most recent low pivot before this high
-            preceding_lows = low_pivots_idx[low_pivots_idx < swing_high_idx]
-            if preceding_lows.size == 0: return {}
-            swing_low_idx = preceding_lows[-1]
-        else:
-            # Recent trend is down, swing is from a high to a low
-            swing_low_idx = last_low_idx
-            # Find the most recent high pivot before this low
-            preceding_highs = high_pivots_idx[high_pivots_idx < swing_low_idx]
-            if preceding_highs.size == 0: return {}
-            swing_high_idx = preceding_highs[-1]
+        for i in range(1, len(all_pivots)):
+            prev_idx, prev_type = all_pivots[i-1]
+            curr_idx, curr_type = all_pivots[i]
 
-        swing_high_price = self.data['high'].iloc[swing_high_idx]
-        swing_low_price = self.data['low'].iloc[swing_low_idx]
+            if prev_type != curr_type: # We have a swing
+                high_idx = curr_idx if curr_type == 'h' else prev_idx
+                low_idx = curr_idx if curr_type == 'l' else prev_idx
+                swings.append({
+                    'high': {'price': self.data['High'].iloc[high_idx], 'time': high_idx},
+                    'low': {'price': self.data['Low'].iloc[low_idx], 'time': low_idx}
+                })
 
-        # Using index for time now, which is more robust
-        return {
-            'high': {'price': swing_high_price, 'time': swing_high_idx},
-            'low': {'price': swing_low_price, 'time': swing_low_idx}
-        }
+        if not swings:
+            return {}
+
+        # 4. Score swings and select the most significant and relevant one
+        best_swing = None
+        max_score = -1
+        relevance_threshold_index = len(self.data) * (1 - 0.35)
+
+        for swing in swings:
+            swing_end_time = max(swing['high']['time'], swing['low']['time'])
+            if swing_end_time >= relevance_threshold_index:
+                price_range = swing['high']['price'] - swing['low']['price']
+                if price_range > max_score:
+                    max_score = price_range
+                    best_swing = swing
+
+        return best_swing if best_swing else {}
 
     def get_comprehensive_fibonacci_analysis(self) -> Dict:
         if len(self.data) < 20:
@@ -68,10 +88,10 @@ class FibonacciAnalysis:
         swing = self.find_major_swing()
         if not swing:
             # Fallback to simple min/max if pivot method fails
-            major_high_price = self.data['high'].max()
-            major_low_price = self.data['low'].min()
-            major_high_time = self.data['high'].idxmax()
-            major_low_time = self.data['low'].idxmin()
+            major_high_price = self.data['High'].max()
+            major_low_price = self.data['Low'].min()
+            major_high_time = self.data['High'].idxmax()
+            major_low_time = self.data['Low'].idxmin()
             swing = {'high': {'price': major_high_price, 'time': major_high_time}, 'low': {'price': major_low_price, 'time': major_low_time}}
 
         if not swing:
