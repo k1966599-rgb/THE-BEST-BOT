@@ -96,7 +96,8 @@ def get_ranked_analysis_for_symbol(symbol: str, config: dict, okx_fetcher: OKXDa
     )
     return final_report
 
-def main():
+def _setup_analysis_parameters(config: dict) -> tuple:
+    """Parses command-line arguments to determine analysis parameters."""
     parser = argparse.ArgumentParser(description='🤖 Comprehensive Technical Analysis Bot (CLI)')
     parser.add_argument('symbols', nargs='*', help='Currency symbols to analyze (e.g., BTC/USDT)')
     parser.add_argument('--watchlist', action='store_true', help='Analyze the default watchlist')
@@ -107,9 +108,7 @@ def main():
     analysis_group.add_argument('--short', action='store_true', help='Run short-term analysis')
 
     args = parser.parse_args()
-    config = get_config()
 
-    # Determine analysis type and timeframes from args
     timeframe_groups = config['trading']['TIMEFRAME_GROUPS']
     if args.long:
         analysis_type = "استثمار طويل المدى (1D - 4H - 1H)"
@@ -121,15 +120,20 @@ def main():
         analysis_type = "مضاربة سريعة (5m - 3m)"
         timeframes = timeframe_groups['short']
     else:
-        # Default behavior
         analysis_type = "تحليل افتراضي"
         timeframes = config['trading']['TIMEFRAMES_TO_ANALYZE']
 
-    print("🚀 Initializing OKX Data Fetcher...")
-    okx_fetcher = OKXDataFetcher()
-
     symbols_to_analyze = args.symbols if args.symbols else WATCHLIST if args.watchlist else [config['trading']['DEFAULT_SYMBOL']]
 
+    return symbols_to_analyze, timeframes, analysis_type
+
+def main():
+    """Main function to run the bot."""
+    config = get_config()
+    symbols_to_analyze, timeframes, analysis_type = _setup_analysis_parameters(config)
+
+    print("🚀 Initializing OKX Data Fetcher...")
+    okx_fetcher = OKXDataFetcher()
     okx_symbols = [s.replace('/', '-') for s in symbols_to_analyze]
     okx_fetcher.start_data_services(okx_symbols)
 
