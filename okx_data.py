@@ -93,7 +93,21 @@ class OKXDataFetcher:
         return {}
 
     def _timeframe_to_minutes(self, timeframe: str) -> int:
-        # ... [implementation unchanged] ...
+        """
+        Converts a timeframe string (e.g., '5m', '1H', '1D') to minutes.
+        """
+        try:
+            if 'm' in timeframe:
+                return int(timeframe.replace('m', ''))
+            elif 'H' in timeframe: # OKX uses 'H' for hour
+                return int(timeframe.replace('H', '')) * 60
+            elif 'D' in timeframe: # OKX uses 'D' for day
+                return int(timeframe.replace('D', '')) * 24 * 60
+        except (ValueError, TypeError):
+            logger.warning(f"Could not parse timeframe '{timeframe}', defaulting to 1440 minutes (1 day).")
+            return 1440 # Default to 1 day
+
+        logger.warning(f"Unknown timeframe format '{timeframe}', defaulting to 1440 minutes (1 day).")
         return 1440
 
     def fetch_historical_data(self, symbol: str = 'BTC-USDT', timeframe: str = '1D', days_to_fetch: int = 365) -> List[Dict]:
