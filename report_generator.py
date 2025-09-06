@@ -4,17 +4,20 @@ from typing import Dict, List, Any
 def _format_scenarios(p: Dict, trend_analysis: Dict) -> str:
     if not p: return ""
     name = p.get('name', '')
-    base_confidence = p.get('confidence', 60)
-    is_trending = trend_analysis.get('is_trending', False)
 
-    # Adjust probability based on trend confirmation
-    if is_trending:
-        primary_prob = min(base_confidence + 10, 85) # Cap at 85%
-    else:
-        primary_prob = base_confidence - 5
+    # The confidence score is now fully dynamic from classic_patterns.py
+    primary_prob = p.get('confidence', 60)
 
-    neutral_prob = 15
+    # Set a smaller, fixed neutral probability
+    neutral_prob = 10
+
+    # Counter probability is the remainder
     counter_prob = 100 - primary_prob - neutral_prob
+
+    # Ensure counter_prob is not negative if confidence is very high
+    if counter_prob < 0:
+        counter_prob = 5
+        neutral_prob = 100 - primary_prob - counter_prob
 
     res_line = p.get('resistance_line', p.get('neckline', 0))
     sup_line = p.get('support_line', p.get('neckline', 0))
@@ -91,17 +94,61 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
     # Pass trend analysis data to the scenarios function
     scenarios_section = _format_scenarios(found_patterns[0] if found_patterns else None, trends_data)
 
-    goals_section = f"""
-<b>🎯 أهداف وإدارة المخاطر:</b>
-- <b>وقف الخسارة:</b> <code>${tm.get('stop_loss', 0):,.2f}</code>
-- <b>الهدف الأول:</b> <code>${tm.get('profit_target', 0):,.2f}</code>
-"""
-    if found_patterns:
+    goals_section = "\n<b>🎯 أهداف وإدارة المخاطر:</b>\n"
+    stop_loss = tm.get('stop_loss', 0)
+    if stop_loss > 0:
+        goals_section += f"- <b>وقف الخسارة:</b> <code>${stop_loss:,.2f}</code>\n"
+        goals_section += f"- <b>الهدف الأول:</b> <code>${tm.get('profit_target', 0):,.2f}</code>\n"
+    elif tm.get('conditional_stop_loss', 0) > 0:
+        goals_section += f"<i>- 💡 <b>فكرة تداول مشروطة:</b> {tm.get('trade_idea_name', '')}</i>\n"
+        entry_label = "الدخول فوق" if "اختراق" in tm.get('trade_idea_name', '') else "الدخول تحت"
+        goals_section += f"- <b>{entry_label}:</b> <code>${tm.get('conditional_entry', 0):,.2f}</code>\n"
+        goals_section += f"- <b>وقف الخسارة المشروط:</b> <code>${tm.get('conditional_stop_loss', 0):,.2f}</code>\n"
+        goals_section += f"- <b>الهدف المشروط:</b> <code>${tm.get('conditional_profit_target', 0):,.2f}</code>\n"
+    else:
+        goals_section += "- <b>وقف الخسارة:</b> <code>$0.00</code>\n"
+        goals_section += "- <b>الهدف الأول:</b> <code>$0.00</code>\n"
+
+    if found_patterns and 'الهدف من النموذج' not in goals_section:
         goals_section += f"- <b>الهدف من النموذج:</b> <code>${found_patterns[0].get('calculated_target', 0):,.2f}</code>"
 
     return main_data + "\n" + patterns_section + "\n<b>🎯 المستويات الحرجة</b>\n" + sr_section + goals_section + scenarios_section
 
 # ... (rest of the file is unchanged)
+def _analyze_signal_conflict(ranked_results: list) -> str:
+    """Analyzes conflicts between long-term and short-term signals."""
+    if len(ranked_results) < 2:
+        return "- لا يوجد سياق كافٍ للمقارنة بين الأطر الزمنية."
+
+    long_term_tfs = ['1d', '4h']
+    short_term_tfs = ['1h', '30m', '15m']
+
+    long_term_bullish = 0
+    long_term_bearish = 0
+    short_term_bullish = 0
+    short_term_bearish = 0
+
+    for r in ranked_results:
+        p = r.get('bot', {}).analysis_results.get('patterns', {}).get('found_patterns', [{}])[0]
+        tf = r.get('bot', {}).final_recommendation.get('timeframe')
+        name = p.get('name', '')
+        is_bullish = 'صاعد' in name or 'قاع' in name
+
+        if tf in long_term_tfs:
+            if is_bullish: long_term_bullish += 1
+            else: long_term_bearish += 1
+        elif tf in short_term_tfs:
+            if is_bullish: short_term_bullish += 1
+            else: short_term_bearish += 1
+
+    if long_term_bullish > long_term_bearish and short_term_bearish > short_term_bullish:
+        return "- 💡 **سياق مهم:** الاتجاه العام على المدى الطويل صاعد، بينما تظهر الأطر القصيرة إشارات ضعف. قد يكون هذا مجرد تراجع مؤقت ومناسبة جيدة للشراء من مستويات أقل قبل استئناف الصعود."
+    if long_term_bearish > long_term_bullish and short_term_bullish > short_term_bearish:
+        return "- 💡 **سياق مهم:** الاتجاه العام على المدى الطويل هابط، بينما تظهر الأطر القصيرة إشارات ارتداد. قد يكون هذا مجرد صعود تصحيحي مؤقت قبل استئناف الهبوط."
+
+    return "- ✅ **تأكيد:** الإشارات متوافقة على معظم الأطر الزمنية، مما يعزز قوة الاتجاه الحالي."
+
+
 def _format_executive_summary(ranked_results: list, current_price: float) -> str:
     if not ranked_results: return ""
     best_bot = ranked_results[0].get('bot')
@@ -113,11 +160,29 @@ def _format_executive_summary(ranked_results: list, current_price: float) -> str
 
 <b>✅ التوصية الرئيسية:</b>
 <b>{rec.get('main_action', '')}</b> 🚀 بقوة {rec.get('confidence', 0)}% (حسب أفضل فريم)
-- <b>الدخول:</b> <code>${tm.get('entry_price', current_price):,.2f}</code>
+"""
+    # Logic to show conditional or actual trade levels in summary
+    if tm.get('stop_loss', 0) > 0:
+        summary_text += f"""- <b>الدخول:</b> <code>${tm.get('entry_price', current_price):,.2f}</code>
 - <b>وقف الخسارة:</b> <code>${tm.get('stop_loss', 0):,.2f}</code>  
 - <b>الهدف الأول:</b> <code>${tm.get('profit_target', 0):,.2f}</code>
 """
-    summary_text += "\n<b>🎯 الاستراتيجية الموصى بها:</b>\n"
+    elif tm.get('conditional_stop_loss', 0) > 0:
+        summary_text += f"""- 💡 <b>فكرة مشروطة:</b> {tm.get('trade_idea_name', '')}
+- <b>الدخول عند:</b> <code>${tm.get('conditional_entry', 0):,.2f}</code>
+- <b>وقف الخسارة:</b> <code>${tm.get('conditional_stop_loss', 0):,.2f}</code>
+- <b>الهدف:</b> <code>${tm.get('conditional_profit_target', 0):,.2f}</code>
+"""
+    else:
+        summary_text += f"""- <b>الدخول:</b> <code>${current_price:,.2f}</code>
+- <b>وقف الخسارة:</b> <code>$0.00</code>
+- <b>الهدف الأول:</b> <code>$0.00</code>
+"""
+
+    summary_text += "\n<b>🎯 السياق الفني:</b>\n"
+    summary_text += _analyze_signal_conflict(ranked_results)
+
+    summary_text += "\n\n<b>🎯 الاستراتيجية الموصى بها:</b>\n"
     summary_text += """- **للمدى القصير (فريمات دقائق/ساعة):** التركيز على أهداف الفريمات الأصغر ومراقبة نقاط الكسر لتأكيد النماذج.
 - **للمدى الطويل (فريمات 4 ساعات/يومي):** استخدام الفريمات الأصغر لتحديد نقاط دخول دقيقة للنماذج الكبيرة.
 """
