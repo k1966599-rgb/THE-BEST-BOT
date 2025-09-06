@@ -5,6 +5,8 @@ from .ascending_triangle import check_ascending_triangle
 from .double_bottom import check_double_bottom
 from .bull_flag import check_bull_flag
 from .bear_flag import check_bear_flag
+from .falling_wedge import check_falling_wedge
+from .rising_wedge import check_rising_wedge
 # Import other pattern checkers here as they are created
 
 def check_all_patterns(df: pd.DataFrame, config: dict, highs: List[Dict], lows: List[Dict], current_price: float, price_tolerance: float) -> List[Dict]:
@@ -18,6 +20,8 @@ def check_all_patterns(df: pd.DataFrame, config: dict, highs: List[Dict], lows: 
     all_patterns.extend(check_double_bottom(df, config, highs, lows, current_price, price_tolerance))
     all_patterns.extend(check_bull_flag(df, config, highs, lows, current_price, price_tolerance))
     all_patterns.extend(check_bear_flag(df, config, highs, lows, current_price, price_tolerance))
+    all_patterns.extend(check_falling_wedge(df, config, highs, lows, current_price, price_tolerance))
+    all_patterns.extend(check_rising_wedge(df, config, highs, lows, current_price, price_tolerance))
     # Extend with other checkers here
 
     return all_patterns
