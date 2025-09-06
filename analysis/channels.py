@@ -17,11 +17,13 @@ class PriceChannels:
     وحدة تحليل القنوات السعرية المتقدمة
     Uses a more robust pivot-based method instead of simple linear regression.
     """
-    def __init__(self, df: pd.DataFrame, config: dict = None):
+    def __init__(self, df: pd.DataFrame, config: dict = None, timeframe: str = '1h'):
         self.df = df.copy()
         if config is None: config = {}
         self.config = config
-        self.lookback = config.get('CHANNEL_LOOKBACK', 50)
+
+        overrides = config.get('TIMEFRAME_OVERRIDES', {}).get(timeframe, {})
+        self.lookback = overrides.get('CHANNEL_LOOKBACK', config.get('CHANNEL_LOOKBACK', 50))
 
     def get_comprehensive_channel_analysis(self) -> Dict:
         """

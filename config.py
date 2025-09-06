@@ -58,7 +58,23 @@ ANALYSIS_CONFIG = {
 
     # Pattern Analysis
     'PATTERN_LOOKBACK': 90,
-    'PATTERN_PRICE_TOLERANCE': 0.03
+    'PATTERN_PRICE_TOLERANCE': 0.03,
+
+    # Timeframe-specific overrides for analysis parameters
+    'TIMEFRAME_OVERRIDES': {
+        '1d': {
+            'SR_LOOKBACK': 365,
+            'FIB_LOOKBACK': 365,
+            'PATTERN_LOOKBACK': 365,
+            'CHANNEL_LOOKBACK': 180,
+        },
+        '4h': {
+            'SR_LOOKBACK': 1080, # 180 days
+            'FIB_LOOKBACK': 1080,
+            'PATTERN_LOOKBACK': 1080,
+            'CHANNEL_LOOKBACK': 360, # 60 days
+        },
+    }
 }
 
 WATCHLIST = [

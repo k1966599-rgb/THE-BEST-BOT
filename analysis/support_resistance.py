@@ -8,11 +8,14 @@ class SupportResistanceAnalysis:
     وحدة تحليل الدعوم والمقاومة المتقدمة
     تحدد مناطق العرض والطلب وتوفر بيانات مفصلة للتقارير.
     """
-    def __init__(self, df: pd.DataFrame, config: dict = None):
+    def __init__(self, df: pd.DataFrame, config: dict = None, timeframe: str = '1h'):
         self.df = df.copy()
         if config is None: config = {}
-        self.lookback_period = config.get('SR_LOOKBACK', 100)
-        self.tolerance = config.get('SR_TOLERANCE', 0.015)
+
+        # Get timeframe-specific overrides or default values
+        overrides = config.get('TIMEFRAME_OVERRIDES', {}).get(timeframe, {})
+        self.lookback_period = overrides.get('SR_LOOKBACK', config.get('SR_LOOKBACK', 100))
+        self.tolerance = overrides.get('SR_TOLERANCE', config.get('SR_TOLERANCE', 0.015))
 
     def find_all_levels(self) -> Dict[str, List[Dict]]:
         data = self.df.tail(self.lookback_period)

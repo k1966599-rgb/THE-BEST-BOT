@@ -10,14 +10,15 @@ class ClassicPatterns:
     This class serves as a wrapper for the modular pattern analysis system.
     It orchestrates fetching pivots and running all configured pattern checks.
     """
-    def __init__(self, df: pd.DataFrame, config: dict = None):
+    def __init__(self, df: pd.DataFrame, config: dict = None, timeframe: str = '1h'):
         self.df = df
         if config is None: config = {}
         self.config = config
 
         # --- Configuration ---
-        self.lookback_period = config.get('PATTERN_LOOKBACK', 90)
-        self.price_tolerance = config.get('PATTERN_PRICE_TOLERANCE', 0.03)
+        overrides = config.get('TIMEFRAME_OVERRIDES', {}).get(timeframe, {})
+        self.lookback_period = overrides.get('PATTERN_LOOKBACK', config.get('PATTERN_LOOKBACK', 90))
+        self.price_tolerance = overrides.get('PATTERN_PRICE_TOLERANCE', config.get('PATTERN_PRICE_TOLERANCE', 0.03))
 
         # --- Data Slice ---
         self.data = self.df.tail(self.lookback_period)
