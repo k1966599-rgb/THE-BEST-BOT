@@ -8,6 +8,11 @@ import traceback
 import concurrent.futures
 from typing import List, Optional
 import threading
+import logging
+
+# --- Setup logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(threadName)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -23,7 +28,7 @@ def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict, okx_fe
         # First, validate if the timeframe is supported for the symbol
         validate_symbol_timeframe(symbol, timeframe)
 
-        print(f"--- ⏳ Analyzing {symbol} on {timeframe} ---")
+        logger.info(f"--- ⏳ Analyzing {symbol} on {timeframe} ---")
         timeframe_config = copy.deepcopy(config)
         timeframe_config['trading']['INTERVAL'] = timeframe
         
@@ -33,10 +38,11 @@ def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict, okx_fe
         return {'success': True, 'bot': bot}
     except Exception as e:
         error_message = f"❌ Exception during analysis of {symbol} on {timeframe}. Error: {type(e).__name__}: {str(e)}"
-        print(error_message)
+        logger.error(error_message)
         # We don't print the full traceback for validation errors as they are expected.
         if not isinstance(e, ValueError):
-            traceback.print_exc()
+            # Using logger.exception will automatically include traceback info
+            logger.exception(f"Full traceback for error in {symbol} on {timeframe}:")
         return {'success': False, 'timeframe': timeframe, 'error': error_message}
 
 def rank_opportunities(results: list) -> list:
@@ -65,7 +71,7 @@ def rank_opportunities(results: list) -> list:
 def get_top_20_symbols(okx_fetcher: OKXDataFetcher) -> List[str]:
     """Fetches all tickers and returns the top 20 by USDT volume."""
     # This functionality is simplified as the main focus is the bot's analysis engine.
-    print("Fetching market tickers to determine top 20 by volume...")
+    logger.info("Fetching market tickers to determine top 20 by volume...")
     # In a real scenario, this would involve a call to okx_fetcher
     return WATCHLIST
 
@@ -78,10 +84,11 @@ def get_ranked_analysis_for_symbol(symbol: str, config: dict, okx_fetcher: OKXDa
     else:
         timeframes = config['trading'].get('TIMEFRAMES_TO_ANALYZE', ['1d'])
 
-    print(f"📊 Starting PARALLEL analysis for {symbol} on {len(timeframes)} timeframes: {timeframes}...")
+    logger.info(f"📊 Starting PARALLEL analysis for {symbol} on {len(timeframes)} timeframes: {timeframes}...")
 
     all_timeframe_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(timeframes)) as executor:
+    # Limit max_workers to a reasonable number to avoid resource exhaustion and API rate limits
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_tf = {executor.submit(run_analysis_for_timeframe, symbol, tf, config, okx_fetcher): tf for tf in timeframes}
         for future in concurrent.futures.as_completed(future_to_tf):
             tf = future_to_tf[future]
@@ -89,7 +96,7 @@ def get_ranked_analysis_for_symbol(symbol: str, config: dict, okx_fetcher: OKXDa
                 result = future.result()
                 all_timeframe_results.append(result)
             except Exception as exc:
-                print(f'❌ Timeframe {tf} for {symbol} generated an exception: {exc}')
+                logger.error(f'❌ Timeframe {tf} for {symbol} generated an exception in the main loop: {exc}')
                 # Optionally, append a failure result to still show it in the report
                 all_timeframe_results.append({'success': False, 'timeframe': tf, 'error': str(exc)})
 
@@ -144,23 +151,23 @@ def main():
     config = get_config()
     symbols_to_analyze, timeframes, analysis_type = _setup_analysis_parameters(config)
 
-    print("🚀 Initializing OKX Data Fetcher...")
+    logger.info("🚀 Initializing OKX Data Fetcher...")
     okx_fetcher = OKXDataFetcher()
     okx_symbols = [s.replace('/', '-') for s in symbols_to_analyze]
     okx_fetcher.start_data_services(okx_symbols)
 
-    print("⏳ Waiting 10 seconds for initial data...")
+    logger.info("⏳ Waiting 10 seconds for initial data...")
     time.sleep(10)
 
     try:
         for symbol in symbols_to_analyze:
             final_report = get_ranked_analysis_for_symbol(symbol, config, okx_fetcher, timeframes, analysis_type)
-            print(final_report)
+            logger.info(f"Generated report for {symbol}:\n{final_report}")
             send_telegram_message(final_report)
             if len(symbols_to_analyze) > 1:
                 time.sleep(5)
     finally:
-        print("⏹️ Stopping OKX Data Fetcher...")
+        logger.info("⏹️ Stopping OKX Data Fetcher...")
         okx_fetcher.stop()
 
 if __name__ == "__main__":
