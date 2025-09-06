@@ -27,7 +27,7 @@ def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict, okx_fe
         timeframe_config = copy.deepcopy(config)
         timeframe_config['trading']['INTERVAL'] = timeframe
         
-        bot = ComprehensiveTradingBot(symbol=symbol, config=timeframe_config, okx_fetcher=okx_fetcher)
+        bot = ComprehensiveTradingBot(symbol=symbol, timeframe=timeframe, config=timeframe_config, okx_fetcher=okx_fetcher)
         bot.run_complete_analysis()
         bot.final_recommendation['timeframe'] = timeframe
         return {'success': True, 'bot': bot}
@@ -40,12 +40,23 @@ def run_analysis_for_timeframe(symbol: str, timeframe: str, config: dict, okx_fe
         return {'success': False, 'timeframe': timeframe, 'error': error_message}
 
 def rank_opportunities(results: list) -> list:
-    """Ranks analysis results from different timeframes."""
+    """
+    Ranks analysis results from different timeframes, prioritizing actionable signals
+    over "Wait" signals.
+    """
     for res in results:
         if res.get('success'):
             rec = res['bot'].final_recommendation
-            signal_multiplier = 0.5 if 'انتظار' in rec.get('main_action', '') else 1.0
-            rank_score = abs(rec.get('total_score', 0)) * (rec.get('confidence', 0) / 100) * signal_multiplier
+            # Give a significant penalty to "Wait" signals to push them down the ranking
+            signal_multiplier = 0.1 if 'انتظار' in rec.get('main_action', '') else 1.0
+
+            # Add a small bonus for divergences, as they are strong signals
+            divergence_bonus = 1.0
+            indicators_analysis = res.get('bot', {}).analysis_results.get('indicators', {})
+            if indicators_analysis.get('rsi_divergence') or indicators_analysis.get('macd_divergence'):
+                divergence_bonus = 1.2 # 20% bonus to the score if a divergence is found
+
+            rank_score = abs(rec.get('total_score', 0)) * (rec.get('confidence', 0) / 100) * signal_multiplier * divergence_bonus
             res['rank_score'] = rank_score
         else:
             res['rank_score'] = -1

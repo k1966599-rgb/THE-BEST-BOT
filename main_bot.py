@@ -18,8 +18,9 @@ from indicators import apply_all_indicators
 warnings.filterwarnings('ignore')
 
 class ComprehensiveTradingBot:
-    def __init__(self, symbol: str, config: dict, okx_fetcher: OKXDataFetcher):
+    def __init__(self, symbol: str, timeframe: str, config: dict, okx_fetcher: OKXDataFetcher):
         self.symbol = symbol.upper()
+        self.timeframe = timeframe
         self.config = config
         self.okx_fetcher = okx_fetcher
         self.df = None
@@ -27,19 +28,54 @@ class ComprehensiveTradingBot:
         self.analysis_results = {}
         self.final_recommendation = {}
 
+    def _get_max_lookback_days(self) -> int:
+        """
+        Calculates the maximum lookback period in days required by any analysis module
+        for the current timeframe.
+        """
+        analysis_config = self.config.get('analysis', {})
+        overrides = analysis_config.get('TIMEFRAME_OVERRIDES', {}).get(self.timeframe, {})
+
+        # Get all lookback values from the config, using overrides if they exist
+        lookbacks = [
+            overrides.get('SR_LOOKBACK', analysis_config.get('SR_LOOKBACK', 100)),
+            overrides.get('FIB_LOOKBACK', analysis_config.get('FIB_LOOKBACK', 90)),
+            overrides.get('PATTERN_LOOKBACK', analysis_config.get('PATTERN_LOOKBACK', 90)),
+            overrides.get('CHANNEL_LOOKBACK', analysis_config.get('CHANNEL_LOOKBACK', 50)),
+            analysis_config.get('TREND_LONG_PERIOD', 100) # Trend analysis also has a lookback
+        ]
+
+        max_lookback_candles = max(lookbacks)
+
+        # Convert max lookback in candles to days
+        # This is an approximation, but it's better than a fixed period
+        timeframe_char = self.timeframe[-1]
+        timeframe_val = int(self.timeframe[:-1])
+
+        if timeframe_char == 'm':
+            candles_per_day = 24 * 60 / timeframe_val
+        elif timeframe_char == 'h':
+            candles_per_day = 24 / timeframe_val
+        elif timeframe_char == 'd':
+            candles_per_day = 1
+        else: # Default for weekly, etc.
+            candles_per_day = 1.0/7.0
+
+        # Add a buffer of 10%
+        required_days = (max_lookback_candles / candles_per_day) * 1.1
+
+        # Return integer number of days, with a minimum of 30
+        return max(30, int(required_days))
+
     def fetch_data(self) -> bool:
         okx_symbol = self.symbol.replace('/', '-')
-        timeframe = self.config['trading']['INTERVAL']
-        api_timeframe = timeframe.replace('d', 'D').replace('h', 'H') if 'd' in timeframe or 'h' in timeframe else timeframe
+        api_timeframe = self.timeframe.replace('d', 'D').replace('h', 'H')
 
-        print(f"Fetching historical data for {okx_symbol} on timeframe {api_timeframe} via OKXDataFetcher...")
+        days_to_fetch = self._get_max_lookback_days()
 
-        period_str = self.config['trading'].get('PERIOD', '1y')
-        unit = ''.join(filter(str.isalpha, period_str)).lower()
-        num = int(''.join(filter(str.isdigit, period_str)))
-        days = num * 365 if unit == 'y' else num * 30 if unit == 'mo' else num * 7 if unit == 'w' else num
+        print(f"Fetching historical data for {okx_symbol} on timeframe {api_timeframe} ({days_to_fetch} days) via OKXDataFetcher...")
 
-        historical_data = self.okx_fetcher.fetch_historical_data(symbol=okx_symbol, timeframe=api_timeframe, days_to_fetch=days)
+        historical_data = self.okx_fetcher.fetch_historical_data(symbol=okx_symbol, timeframe=api_timeframe, days_to_fetch=days_to_fetch)
 
         if not historical_data:
             print(f"Error: Could not fetch historical data for {okx_symbol} on {timeframe}.")
@@ -83,7 +119,8 @@ class ComprehensiveTradingBot:
         analysis_config = self.config.get('analysis', {})
         for name, (module_class, method_name) in modules.items():
             try:
-                instance = module_class(self.df_with_indicators, config=analysis_config)
+                # Pass the timeframe to the constructor of the analysis modules
+                instance = module_class(self.df_with_indicators, config=analysis_config, timeframe=self.timeframe)
                 self.analysis_results[name] = getattr(instance, method_name)()
             except Exception as e:
                 self.analysis_results[name] = {'error': str(e)}

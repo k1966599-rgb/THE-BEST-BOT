@@ -7,10 +7,13 @@ class FibonacciAnalysis:
     """
     وحدة تحليل فيبوناتشي المتقدمة
     """
-    def __init__(self, df: pd.DataFrame, config: dict = None):
+    def __init__(self, df: pd.DataFrame, config: dict = None, timeframe: str = '1h'):
         self.df = df.copy()
         if config is None: config = {}
-        self.lookback_period = config.get('FIB_LOOKBACK', 90)
+
+        overrides = config.get('TIMEFRAME_OVERRIDES', {}).get(timeframe, {})
+        self.lookback_period = overrides.get('FIB_LOOKBACK', config.get('FIB_LOOKBACK', 90))
+
         self.data = self.df.tail(self.lookback_period).reset_index(drop=True)
         self.current_price = self.data['Close'].iloc[-1] if not self.data.empty else 0
         self.retracement_ratios = [0.236, 0.382, 0.5, 0.618, 0.786]
