@@ -99,6 +99,7 @@ class OKXDataFetcher:
     def fetch_historical_data(self, symbol: str = 'BTC-USDT', timeframe: str = '1D', days_to_fetch: int = 365) -> List[Dict]:
         """
         Fetches historical data, checking cache first.
+        This version uses a more robust while loop to ensure all required data is fetched.
         """
         cache_key = (symbol, timeframe, days_to_fetch)
         if cache_key in self.historical_cache:
@@ -110,31 +111,41 @@ class OKXDataFetcher:
             all_candles = []
             current_before_ts = None
             endpoint_url = f"{self.base_url}/api/v5/market/candles"
-            limit_per_request = 100
+            # Use the maximum limit allowed by the API to be more efficient
+            limit_per_request = 300
+
             tf_minutes = self._timeframe_to_minutes(timeframe)
             if tf_minutes <= 0: tf_minutes = 1440
             total_candles_needed = (days_to_fetch * 24 * 60) / tf_minutes
-            num_requests = int(total_candles_needed / limit_per_request) + 2
 
-            for i in range(num_requests):
+            max_requests = 20 # Safety break to prevent infinite loops
+
+            while len(all_candles) < total_candles_needed and max_requests > 0:
                 params = {'instId': symbol, 'bar': timeframe, 'limit': str(limit_per_request)}
                 if current_before_ts:
                     params['before'] = current_before_ts
 
                 response = requests.get(endpoint_url, params=params, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+                max_requests -= 1
+
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('code') == '0':
                         candles_data = data.get('data', [])
                         if not candles_data:
+                            logger.info(f"⏹️ No more historical data returned from API for {symbol}. Fetched {len(all_candles)} candles.")
                             break
+
                         all_candles.extend(candles_data)
                         current_before_ts = candles_data[-1][0]
-                        time.sleep(0.25)
+                        time.sleep(0.3) # Respect rate limits
                     else:
                         raise Exception(f"API Error: {data.get('msg', 'Unknown error')}")
                 else:
                     raise Exception(f"HTTP Error: {response.status_code} - {response.text}")
+
+            if max_requests == 0:
+                logger.warning(f"⚠️ Hit max request limit for {symbol}. The data might be incomplete.")
 
             historical_data = []
             seen_timestamps = set()
