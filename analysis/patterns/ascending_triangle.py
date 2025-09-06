@@ -45,6 +45,7 @@ def check_ascending_triangle(df: 'pd.DataFrame', config: dict, highs: List[Dict]
         'status': 'مكتمل ✅' if current_price > resistance_line_price else 'قيد التكوين 🟡',
         'resistance_line': resistance_line_price,
         'support_line_start': higher_lows[0]['price'],
+        'support_line': higher_lows[-1]['price'],  # Use the last higher low for a tighter S/L
         'calculated_target': resistance_line_price + height,
         'confidence': confidence
     })

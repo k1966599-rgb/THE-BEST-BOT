@@ -113,18 +113,29 @@ class TradeManagement:
                 is_bullish = 'صاعد' in p_name or 'قاع' in p_name
 
                 if is_bullish and entry > 0 and sl > 0 and target > 0:
+                    stop_price = sl * 0.998
+                    risk = abs(entry - stop_price)
+                    reward = abs(target - entry)
+                    rr_ratio = reward / risk if risk > 0 else 0
                     trade_plan.update({
                         'trade_idea_name': f"مراقبة اختراق نمط {p_name}",
                         'conditional_entry': entry,
-                        'conditional_stop_loss': sl * 0.998, # Slightly below support
+                        'conditional_stop_loss': stop_price,
                         'conditional_profit_target': target,
+                        'risk_reward_ratio': rr_ratio
                     })
                 elif not is_bullish and entry > 0 and sl > 0 and target > 0:
-                     trade_plan.update({
+                    entry_price = sl
+                    stop_price = entry * 1.002
+                    risk = abs(entry_price - stop_price)
+                    reward = abs(entry_price - target)
+                    rr_ratio = reward / risk if risk > 0 else 0
+                    trade_plan.update({
                         'trade_idea_name': f"مراقبة كسر نمط {p_name}",
-                        'conditional_entry': sl, # Entry on support break
-                        'conditional_stop_loss': entry * 1.002, # Slightly above resistance
+                        'conditional_entry': entry_price,
+                        'conditional_stop_loss': stop_price,
                         'conditional_profit_target': target,
+                        'risk_reward_ratio': rr_ratio
                     })
                 else:
                     trade_plan['recommendation'] = "لا توجد صفقة حالياً. مراقبة السوق."

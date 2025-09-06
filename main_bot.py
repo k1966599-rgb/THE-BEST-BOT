@@ -146,6 +146,33 @@ class ComprehensiveTradingBot:
         live_price_data = self.okx_fetcher.get_cached_price(okx_symbol)
         current_price = live_price_data['price'] if live_price_data else self.df['Close'].iloc[-1] if 'Close' in self.df.columns else self.df['close'].iloc[-1]
 
+        # --- Resolve Contradictions ---
+        # Check for conflicts between indicator-based signals and strong chart patterns.
+        conflict_note = None
+        found_patterns = self.analysis_results.get('patterns', {}).get('found_patterns', [])
+
+        if found_patterns:
+            p = found_patterns[0] # Focus on the primary pattern
+            is_bullish_pattern = 'صاعد' in p.get('name', '') or 'قاع' in p.get('name', '')
+            is_bearish_action = 'بيع' in main_action
+
+            # If a bullish pattern is forming but indicators suggest selling, override to Wait.
+            if is_bullish_pattern and is_bearish_action and 'قيد التكوين' in p.get('status', ''):
+                original_action = main_action
+                main_action = "انتظار ⏳" # Override to Wait
+                confidence = p.get('confidence', 70) # Use pattern's confidence
+                conflict_note = f"تم تعديل الإشارة من '{original_action}' إلى 'انتظار' لوجود نمط إيجابي قوي ({p.get('name')}) قيد التكوين."
+
+            # Similarly, if a bearish pattern is forming but indicators suggest buying.
+            is_bearish_pattern = 'هابط' in p.get('name', '') or 'قمة' in p.get('name', '')
+            is_bullish_action = 'شراء' in main_action
+            if is_bearish_pattern and is_bullish_action and 'قيد التكوين' in p.get('status', ''):
+                original_action = main_action
+                main_action = "انتظار ⏳" # Override to Wait
+                confidence = p.get('confidence', 70) # Use pattern's confidence
+                conflict_note = f"تم تعديل الإشارة من '{original_action}' إلى 'انتظار' لوجود نمط سلبي قوي ({p.get('name')}) قيد التكوين."
+
+
         self.final_recommendation = {
             'symbol': self.symbol,
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -154,7 +181,8 @@ class ComprehensiveTradingBot:
             'confidence': confidence,
             'total_score': total_score,
             'individual_scores': scores,
-            'trend_line_analysis': self.analysis_results.get('trend_lines', {})
+            'trend_line_analysis': self.analysis_results.get('trend_lines', {}),
+            'conflict_note': conflict_note
         }
 
     def run_complete_analysis(self):

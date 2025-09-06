@@ -87,6 +87,10 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
 <b>📈 المعطيات الأساسية</b>
 - <b>قوة الإشارة:</b> {rec.get('confidence', 0)}% | {rec.get('main_action', '')}
 """
+    # Add conflict note if it exists
+    if rec.get('conflict_note'):
+        main_data += f"- <b>ملاحظة التعارض:</b> <i>{rec.get('conflict_note')}</i>\n"
+
     # Add Divergence Information
     rsi_div = indicators.get('rsi_divergence')
     macd_div = indicators.get('macd_divergence')
@@ -109,18 +113,26 @@ def _format_timeframe_analysis(result: Dict, priority: int) -> str:
 
     goals_section = "\n<b>🎯 أهداف وإدارة المخاطر:</b>\n"
     stop_loss = tm.get('stop_loss', 0)
-    if stop_loss > 0:
-        goals_section += f"- <b>وقف الخسارة:</b> <code>${stop_loss:,.2f}</code>\n"
-        goals_section += f"- <b>الهدف الأول:</b> <code>${tm.get('profit_target', 0):,.2f}</code>\n"
-    elif tm.get('conditional_stop_loss', 0) > 0:
+    conditional_stop_loss = tm.get('conditional_stop_loss', 0)
+
+    # Display conditional trade idea if it exists
+    if conditional_stop_loss > 0:
         goals_section += f"<i>- 💡 <b>فكرة تداول مشروطة:</b> {tm.get('trade_idea_name', '')}</i>\n"
         entry_label = "الدخول فوق" if "اختراق" in tm.get('trade_idea_name', '') else "الدخول تحت"
         goals_section += f"- <b>{entry_label}:</b> <code>${tm.get('conditional_entry', 0):,.2f}</code>\n"
-        goals_section += f"- <b>وقف الخسارة المشروط:</b> <code>${tm.get('conditional_stop_loss', 0):,.2f}</code>\n"
-        goals_section += f"- <b>الهدف المشروط:</b> <code>${tm.get('conditional_profit_target', 0):,.2f}</code>\n"
+        goals_section += f"- <b>وقف الخسارة:</b> <code>${conditional_stop_loss:,.2f}</code>\n"
+        goals_section += f"- <b>الهدف الأول:</b> <code>${tm.get('conditional_profit_target', 0):,.2f}</code>\n"
+        rr_ratio = tm.get('risk_reward_ratio', 0)
+        if rr_ratio > 0:
+            goals_section += f"- <b>نسبة المخاطرة/العائد:</b> <code>1:{rr_ratio:.2f}</code>\n"
+    # Display active trade levels if they exist and there's no conditional plan
+    elif stop_loss > 0:
+        goals_section += f"- <b>وقف الخسارة:</b> <code>${stop_loss:,.2f}</code>\n"
+        goals_section += f"- <b>الهدف الأول:</b> <code>${tm.get('profit_target', 0):,.2f}</code>\n"
+    # Fallback if no trade plan is available at all
     else:
-        goals_section += "- <b>وقف الخسارة:</b> <code>$0.00</code>\n"
-        goals_section += "- <b>الهدف الأول:</b> <code>$0.00</code>\n"
+        goals_section += "- <b>وقف الخسارة:</b> <code>لم يحدد</code>\n"
+        goals_section += "- <b>الهدف الأول:</b> <code>لم يحدد</code>\n"
 
     if first_pattern and 'الهدف من النموذج' not in goals_section:
         goals_section += f"- <b>الهدف من النموذج:</b> <code>${first_pattern.get('calculated_target', 0):,.2f}</code>"
@@ -169,12 +181,28 @@ def _format_executive_summary(ranked_results: list, current_price: float) -> str
     best_bot = ranked_results[0].get('bot')
     rec, tm = best_bot.final_recommendation, best_bot.analysis_results.get('trade_management', {})
     
+    # --- Build the main recommendation text ---
+    main_action = rec.get('main_action', '')
+    confidence = rec.get('confidence', 0)
+    # Default text, to be used if no specific conditional plan is found
+    recommendation_text = f"<b>{main_action}</b> بقوة {confidence}% (حسب أفضل فريم)"
+
+    # If the main action is 'Wait' and there's a conditional plan, make the text more specific.
+    if 'انتظار' in main_action and tm.get('conditional_stop_loss', 0) > 0:
+        idea_name = tm.get('trade_idea_name', '')
+        entry_price = tm.get('conditional_entry', 0)
+
+        if 'اختراق' in idea_name: # For bullish patterns
+            recommendation_text = f"<b>انتظار تأكيد الشراء ⏳:</b> نراقب اختراق مستوى <code>${entry_price:,.2f}</code> لتفعيل فرصة الشراء."
+        elif 'كسر' in idea_name: # For bearish patterns
+            recommendation_text = f"<b>انتظار تأكيد البيع ⏳:</b> نراقب كسر مستوى <code>${entry_price:,.2f}</code> لتفعيل فرصة البيع."
+
     summary_text = f"""
 ---
 <b>🏆 الملخص التنفيذي الشامل</b>
 
 <b>✅ التوصية الرئيسية:</b>
-<b>{rec.get('main_action', '')}</b> 🚀 بقوة {rec.get('confidence', 0)}% (حسب أفضل فريم)
+{recommendation_text}
 """
     # Logic to show conditional or actual trade levels in summary
     if tm.get('stop_loss', 0) > 0:
