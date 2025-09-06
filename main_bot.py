@@ -1,18 +1,19 @@
 import pandas as pd
-import pandas_ta as ta
 import ccxt
 from datetime import datetime, timedelta
 import warnings
 from typing import Dict, List
 
-from analysis.indicators import TechnicalIndicators
+from analysis.technical_score import TechnicalIndicators
 from analysis.trends import TrendAnalysis
+from analysis.trend_lines import TrendLineAnalysis
 from analysis.channels import PriceChannels
 from analysis.support_resistance import SupportResistanceAnalysis
 from analysis.fibonacci import FibonacciAnalysis
 from analysis.classic_patterns import ClassicPatterns
 from trade_management import TradeManagement
 from okx_data import OKXDataFetcher
+from indicators import apply_all_indicators
 
 warnings.filterwarnings('ignore')
 
@@ -52,38 +53,17 @@ class ComprehensiveTradingBot:
 
     def _prepare_data_with_indicators(self):
         """
-        Calculates all necessary technical indicators once and stores them in a new dataframe.
-        This is an efficient design to avoid recalculating indicators in each module.
+        Calculates all necessary technical indicators once by calling the refactored indicator modules.
         """
         if self.df is None: return
 
         # Create a copy to hold the indicators
         self.df_with_indicators = self.df.copy()
-        # Rename columns for pandas_ta compatibility
+        # Rename columns for compatibility with indicator calculations
         self.df_with_indicators.rename(columns={"high": "High", "low": "Low", "open": "Open", "close": "Close", "volume": "Volume"}, inplace=True, errors='ignore')
 
-        # Use the ta.Strategy to build a list of indicators
-        MyStrategy = ta.Strategy(
-            name="Comprehensive Strategy",
-            description="Calculates all indicators needed for the bot",
-            ta=[
-                {"kind": "sma", "length": 20},
-                {"kind": "sma", "length": 50},
-                {"kind": "sma", "length": 200},
-                {"kind": "ema", "length": 20},
-                {"kind": "ema", "length": 50},
-                {"kind": "ema", "length": 100},
-                {"kind": "rsi"},
-                {"kind": "macd"},
-                {"kind": "bbands"},
-                {"kind": "stoch"},
-                {"kind": "atr"},
-                {"kind": "obv"},
-                {"kind": "adx"},
-            ]
-        )
-        # Run the strategy on the dataframe
-        self.df_with_indicators.ta.strategy(MyStrategy)
+        # Apply all indicators from the new modular structure
+        self.df_with_indicators = apply_all_indicators(self.df_with_indicators)
 
     def run_all_analyses(self):
         # Ensure we have the dataframe with indicators before running analyses
@@ -92,27 +72,21 @@ class ComprehensiveTradingBot:
             return
 
         modules = {
-            'indicators': TechnicalIndicators,
-            'trends': TrendAnalysis,
-            'channels': PriceChannels,
-            'support_resistance': SupportResistanceAnalysis,
-            'fibonacci': FibonacciAnalysis,
-            'patterns': ClassicPatterns
+            'indicators': (TechnicalIndicators, 'get_comprehensive_analysis'),
+            'trends': (TrendAnalysis, 'get_comprehensive_trends_analysis'),
+            'trend_lines': (TrendLineAnalysis, 'get_comprehensive_trend_lines_analysis'),
+            'channels': (PriceChannels, 'get_comprehensive_channels_analysis'),
+            'support_resistance': (SupportResistanceAnalysis, 'get_comprehensive_sr_analysis'),
+            'fibonacci': (FibonacciAnalysis, 'get_comprehensive_fibonacci_analysis'),
+            'patterns': (ClassicPatterns, 'get_comprehensive_patterns_analysis')
         }
         analysis_config = self.config.get('analysis', {})
-        for name, module_class in modules.items():
+        for name, (module_class, method_name) in modules.items():
             try:
-                # All modules now receive the same dataframe with pre-calculated indicators
                 instance = module_class(self.df_with_indicators, config=analysis_config)
-
-                # Get the correct analysis method name
-                if name == 'support_resistance': method_name = 'get_comprehensive_sr_analysis'
-                elif name == 'patterns': method_name = 'get_comprehensive_patterns_analysis'
-                else: method_name = f'get_comprehensive_{name}_analysis'
-
                 self.analysis_results[name] = getattr(instance, method_name)()
             except Exception as e:
-                self.analysis_results[name] = {'error': str(e), 'total_score': 0, 'sr_score': 0, 'fib_score': 0, 'pattern_score': 0}
+                self.analysis_results[name] = {'error': str(e)}
 
     def run_trade_management_analysis(self):
         try:
@@ -135,7 +109,16 @@ class ComprehensiveTradingBot:
         live_price_data = self.okx_fetcher.get_cached_price(okx_symbol)
         current_price = live_price_data['price'] if live_price_data else self.df['Close'].iloc[-1] if 'Close' in self.df.columns else self.df['close'].iloc[-1]
 
-        self.final_recommendation = { 'symbol': self.symbol, 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'current_price': current_price, 'main_action': main_action, 'confidence': confidence, 'total_score': total_score, 'individual_scores': scores }
+        self.final_recommendation = {
+            'symbol': self.symbol,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'current_price': current_price,
+            'main_action': main_action,
+            'confidence': confidence,
+            'total_score': total_score,
+            'individual_scores': scores,
+            'trend_line_analysis': self.analysis_results.get('trend_lines', {})
+        }
 
     def run_complete_analysis(self):
         """
